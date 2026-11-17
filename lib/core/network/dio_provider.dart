@@ -1,0 +1,11 @@
+import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+final dioProvider = Provider<Dio>((ref) {
+  return Dio(
+    BaseOptions(
+      baseUrl: 'https://api.bankos.com/v1',
+      connectTimeout: const Duration(seconds: 10),
+    ),
+  );
+});
