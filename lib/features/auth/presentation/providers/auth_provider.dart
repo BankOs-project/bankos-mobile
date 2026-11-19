@@ -99,3 +99,12 @@ class AuthNotifier extends Notifier<AuthState> {
 final authProvider = NotifierProvider<AuthNotifier, AuthState>(
   AuthNotifier.new,
 );
+
+final activeSessionProvider = Provider<AuthSession?>(
+  (ref) => ref.watch(authProvider.select((state) => state.session)),
+);
+
+final customerNameProvider = FutureProvider.autoDispose<String?>((ref) async {
+  if (ref.watch(activeSessionProvider) == null) return null;
+  return ref.watch(authRepositoryProvider).fetchCustomerName();
+});
