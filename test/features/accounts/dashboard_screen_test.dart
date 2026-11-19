@@ -41,64 +41,23 @@ Widget _createTestableWidget({ProviderContainer? container}) {
 
 void main() {
   group('DashboardScreen UI & Functional Flow Tests', () {
-    testWidgets(
-        'El slide horizontal de cuentas muestra nombre, dinero y número enmascarado',
+    testWidgets('El acceso a Cuentas muestra las categorías de productos',
         (tester) async {
-      tester.view.physicalSize = const Size(800, 1400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-
-      await tester.pumpWidget(_createTestableWidget());
-      await tester.pumpAndSettle();
-
-      // Verificar que el slider horizontal existe
-      expect(find.byKey(const Key('dashboard_accounts_slider')), findsOneWidget);
-
-      // La primera cuenta activa es Billetera Local (COP)
-      expect(find.text('Billetera Local'), findsOneWidget);
-      expect(find.text('**** 8821'), findsOneWidget);
-      expect(find.textContaining('5.200.000'), findsOneWidget);
-
-      // Deslizar horizontalmente para ver las demás cuentas del slide
-      await tester.drag(
-        find.byKey(const Key('dashboard_accounts_slider')),
-        const Offset(-400, 0),
-      );
-      await tester.pumpAndSettle();
-
-      // Al deslizar, las cuentas adicionales como Cuenta Principal se hacen visibles
-      expect(find.text('Cuenta Principal'), findsOneWidget);
-      expect(find.text('**** 4589'), findsOneWidget);
-    });
-
-    testWidgets(
-        'Al tocar una tarjeta de cuenta en el slide, redirecciona a la sección de cuentas',
-        (tester) async {
-      tester.view.physicalSize = const Size(800, 1400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-
       final container = ProviderContainer();
       addTearDown(container.dispose);
-
       await tester.pumpWidget(_createTestableWidget(container: container));
+
+      expect(find.text('Datos financieros de demostración'), findsOneWidget);
+      expect(find.text('**** 8821'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('quick_action_accounts')));
       await tester.pumpAndSettle();
 
-      // Tocar la tarjeta de la cuenta visible Billetera Local **** 8821
-      final cardFinder = find.byKey(const Key('account_card_**** 8821'));
-      expect(cardFinder, findsOneWidget);
-      await tester.tap(cardFinder);
-      await tester.pumpAndSettle();
-
-      // Verificar que redirigió a la pantalla de Cuentas Bancarias
-      expect(find.text('Cuentas Bancarias'), findsOneWidget);
-
-      // Verificar que selectedAccountProvider guardó la cuenta seleccionada
-      expect(container.read(selectedAccountProvider), '**** 8821');
-
-      // Verificar que en Cuentas aparece marcada como "Seleccionada"
-      expect(find.text('Seleccionada'), findsOneWidget);
-      expect(find.text('Opciones de Configuración'), findsOneWidget);
+      expect(find.text('Catálogo de demostración'), findsOneWidget);
+      expect(find.text('Ahorros'), findsOneWidget);
+      expect(find.text('Créditos'), findsOneWidget);
+      expect(find.text('Tarjetas'), findsOneWidget);
+      expect(find.text('**** 8821'), findsNothing);
     });
 
     testWidgets(

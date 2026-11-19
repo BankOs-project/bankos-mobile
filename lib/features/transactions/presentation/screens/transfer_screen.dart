@@ -300,7 +300,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
               ] else ...[
                 const _SectionHeader(
                   title: 'Hacia (otra cuenta propia)',
-                  subtitle: 'Mueve dinero entre tus bancos vinculados',
+                  subtitle: 'Mueve dinero entre tus cuentas de este banco',
                 ),
                 const SizedBox(height: 10),
                 if (destOwnAccount != null)

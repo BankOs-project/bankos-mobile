@@ -39,6 +39,12 @@ class AuthSession {
   final String tenantSlug;
   final String email;
 
+  String get bankLabel => tenantSlug
+      .split('-')
+      .where((part) => part.isNotEmpty)
+      .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
+
   factory AuthSession.fromJson(
     Map<String, dynamic> json, {
     required String tenantSlug,

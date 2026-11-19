@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/accounts/presentation/screens/main_shell_screen.dart';
 import '../../features/accounts/presentation/screens/dashboard_screen.dart';
@@ -12,6 +13,13 @@ import '../../features/transactions/presentation/screens/summary_screen.dart';
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/login',
+    redirect: (context, state) {
+      final isAuthenticated = ref.read(activeSessionProvider) != null;
+      if (!isAuthenticated && state.matchedLocation != '/login') {
+        return '/login';
+      }
+      return null;
+    },
     routes: [
       GoRoute(
         path: '/login',

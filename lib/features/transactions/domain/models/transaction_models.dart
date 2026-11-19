@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Alcance de la transferencia dentro de la billetera multibanco BankOs.
+/// Alcance de la transferencia iniciada desde el banco activo.
 enum TransferScope {
   externalPerson,
   ownAccounts;
@@ -136,7 +136,7 @@ class TransactionQuote {
   });
 }
 
-/// Registro histórico y comprobante de una transacción multibanco.
+/// Registro histórico y comprobante de una transacción.
 class TransactionRecord {
   final String id;
   final String referenceCode;

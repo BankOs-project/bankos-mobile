@@ -25,26 +25,29 @@ class DashboardKpiSection extends ConsumerWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Resumen Financiero',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimaryColor,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Resumen Financiero',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimaryColor,
+                      ),
                     ),
-                  ),
-                  Text(
-                    'Periodo: ${activeFilter.periodName}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondaryColor,
+                    Text(
+                      'Periodo: ${activeFilter.periodName}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondaryColor,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
 
               // Botón desplegable para filtro por fechas
               PopupMenuButton<DashboardDateFilter>(
@@ -208,30 +211,35 @@ class DashboardKpiSection extends ConsumerWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    kpis.netCashFlow >= 0
-                        ? Icons.trending_up_rounded
-                        : Icons.trending_down_rounded,
-                    size: 16,
-                    color: kpis.netCashFlow >= 0
-                        ? AppTheme.successColor
-                        : AppTheme.errorColor,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Flujo neto: ${CurrencyFormatter.format(kpis.netCashFlow, 'COP')}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      kpis.netCashFlow >= 0
+                          ? Icons.trending_up_rounded
+                          : Icons.trending_down_rounded,
+                      size: 16,
                       color: kpis.netCashFlow >= 0
                           ? AppTheme.successColor
                           : AppTheme.errorColor,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Flujo neto: ${CurrencyFormatter.format(kpis.netCashFlow, 'COP')}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: kpis.netCashFlow >= 0
+                              ? AppTheme.successColor
+                              : AppTheme.errorColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
@@ -359,10 +367,15 @@ class _BalanceKpiCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
                   children: [
                     Container(
                       padding: const EdgeInsets.all(7),
@@ -376,7 +389,6 @@ class _BalanceKpiCard extends StatelessWidget {
                         color: AppTheme.primaryColor,
                       ),
                     ),
-                    const SizedBox(width: 8),
                     const Text(
                       'Balance Total',
                       style: TextStyle(

@@ -7,6 +7,18 @@ class AuthRepository {
 
   final Dio _dio;
 
+  Future<String?> fetchCustomerName() async {
+    final response = await _dio.get<Map<String, dynamic>>('/auth/me');
+    final body = response.data;
+    final profile = body?['data'];
+    if (body?['success'] != true || profile is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final name = profile['full_name'];
+    return name is String && name.trim().isNotEmpty ? name.trim() : null;
+  }
+
   /// Valida las credenciales contra `POST /api/v1/auth/login` en BankOS Backend.
   Future<AuthSession> login(LoginRequest request) async {
     try {

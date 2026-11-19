@@ -121,14 +121,14 @@ void main() {
       expect(find.text('Envío a @pedro.perez'), findsNothing);
       expect(find.text('Traslado entre mis cuentas'), findsOneWidget);
 
-      // Filtrar por banco Davivienda (haciendo scroll horizontal si hace falta).
-      final daviviendaChip = find.byKey(const Key('bank_filter_Davivienda'));
-      await tester.ensureVisible(daviviendaChip);
+      // Filtrar por el banco de las cuentas propias (haciendo scroll horizontal si hace falta).
+      final ownBankChip = find.byKey(const Key('bank_filter_BankOs'));
+      await tester.ensureVisible(ownBankChip);
       await tester.pumpAndSettle();
-      await tester.tap(daviviendaChip);
+      await tester.tap(ownBankChip);
       await tester.pumpAndSettle();
 
-      expect(find.text('Movimientos · Davivienda'), findsOneWidget);
+      expect(find.text('Movimientos · BankOs'), findsOneWidget);
       expect(find.text('Traslado entre mis cuentas'), findsOneWidget);
     },
   );

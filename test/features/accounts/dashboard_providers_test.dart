@@ -14,7 +14,6 @@ void main() {
       expect(activeCharts.contains(DashboardChartType.incomeVsExpense), isTrue);
       expect(activeCharts.contains(DashboardChartType.expensesByCategory), isTrue);
       expect(activeCharts.contains(DashboardChartType.balanceEvolution), isFalse);
-      expect(activeCharts.contains(DashboardChartType.bankDistribution), isFalse);
     });
 
     test('activeDashboardChartsProvider alterna correctamente la visibilidad de gráficos', () {
@@ -40,9 +39,9 @@ void main() {
       expect(charts.isEmpty, isTrue);
 
       // Reactivar
-      notifier.enableChart(DashboardChartType.bankDistribution);
+      notifier.enableChart(DashboardChartType.balanceEvolution);
       charts = container.read(activeDashboardChartsProvider);
-      expect(charts.contains(DashboardChartType.bankDistribution), isTrue);
+      expect(charts.contains(DashboardChartType.balanceEvolution), isTrue);
     });
 
     test('dashboardKpisProvider actualiza métricas según filtro de fecha', () {

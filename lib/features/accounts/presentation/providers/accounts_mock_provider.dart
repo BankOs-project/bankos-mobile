@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
+import '../../../auth/presentation/providers/auth_provider.dart';
+
 class BankAccount {
   final String title;
   final String accountNumber;
@@ -43,4 +45,7 @@ final accountsMockProvider = Provider<List<BankAccount>>((ref) {
   ];
 });
 
-final bottomNavIndexProvider = StateProvider<int>((ref) => 0);
+final bottomNavIndexProvider = StateProvider<int>((ref) {
+  ref.watch(activeSessionProvider);
+  return 0;
+});

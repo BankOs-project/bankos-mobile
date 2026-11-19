@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
-import '../../../transactions/domain/models/transaction_models.dart';
 import '../../domain/models/dashboard_models.dart';
 import '../providers/dashboard_providers.dart';
 
@@ -26,7 +25,6 @@ class _DashboardChartsSectionState
     final activeCharts = ref.watch(activeDashboardChartsProvider);
     final timeSeries = ref.watch(dashboardTimeSeriesProvider);
     final categories = ref.watch(dashboardCategoryExpensesProvider);
-    final accounts = ref.watch(dashboardAccountsProvider);
     final activeFilter = ref.watch(dashboardDateFilterProvider);
 
     return Column(
@@ -38,36 +36,17 @@ class _DashboardChartsSectionState
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Text(
-                    'Gráficos y Análisis',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimaryColor,
-                    ),
+              const Expanded(
+                child: Text(
+                  'Gráficos y análisis',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimaryColor,
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceVariantColor,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.outlineColor),
-                    ),
-                    child: Text(
-                      '${activeCharts.length} activos',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textSecondaryColor,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
+              const SizedBox(width: 8),
 
               // Botón desplegable con checks para agregar/remover gráficos
               _ChartsDropdownMenuButton(
@@ -172,13 +151,6 @@ class _DashboardChartsSectionState
                   key: const Key('chart_card_balance_evolution'),
                   timeSeries: timeSeries,
                   filter: activeFilter,
-                ),
-                const SizedBox(height: 14),
-              ],
-              if (activeCharts.contains(DashboardChartType.bankDistribution)) ...[
-                _BankDistributionChartCard(
-                  key: const Key('chart_card_bank_distribution'),
-                  accounts: accounts,
                 ),
                 const SizedBox(height: 14),
               ],
@@ -335,8 +307,10 @@ class _IncomeVsExpenseChartCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Cabecera con título y leyendas
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,13 +332,13 @@ class _IncomeVsExpenseChartCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const Row(
+                const Wrap(
+                  spacing: 10,
                   children: [
                     _ChartLegendItem(
                       color: AppTheme.successColor,
                       label: 'Ingresos',
                     ),
-                    SizedBox(width: 10),
                     _ChartLegendItem(
                       color: AppTheme.errorColor,
                       label: 'Gastos',
@@ -518,25 +492,13 @@ class _ExpensesByCategoryChartCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Gastos por Categoría',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimaryColor,
-                  ),
-                ),
-                Text(
-                  'Distribución %',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.textSecondaryColor,
-                  ),
-                ),
-              ],
+            const Text(
+              'Gastos por Categoría',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimaryColor,
+              ),
             ),
             const SizedBox(height: 16),
 
@@ -662,8 +624,10 @@ class _BalanceEvolutionChartCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 const Text(
                   'Evolución del Balance',
@@ -771,115 +735,6 @@ class _BalanceEvolutionChartCard extends StatelessWidget {
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Gráfico 4: Distribución por Banco / Entidad
-class _BankDistributionChartCard extends StatelessWidget {
-  final List<ManagedBankAccount> accounts;
-
-  const _BankDistributionChartCard({
-    super.key,
-    required this.accounts,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    double totalCop = 0;
-    for (final acc in accounts) {
-      if (acc.currency.toUpperCase() == 'COP') {
-        totalCop += acc.balance;
-      }
-    }
-    if (totalCop == 0) totalCop = 1;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        side: const BorderSide(color: AppTheme.outlineColor),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Distribución de Fondos por Entidad',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimaryColor,
-              ),
-            ),
-            const SizedBox(height: 14),
-            for (final acc in accounts) ...[
-              Builder(
-                builder: (context) {
-                  final pct = acc.currency.toUpperCase() == 'COP'
-                      ? (acc.balance / totalCop)
-                      : 0.15;
-                  final clampedPct = pct.clamp(0.05, 1.0);
-
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: acc.accentColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${acc.bankName} (${acc.title})',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textPrimaryColor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Text(
-                              '${(clampedPct * 100).toStringAsFixed(0)}%',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: acc.accentColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 5),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: clampedPct,
-                            backgroundColor: AppTheme.surfaceVariantColor,
-                            color: acc.accentColor,
-                            minHeight: 6,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
           ],
         ),
       ),
