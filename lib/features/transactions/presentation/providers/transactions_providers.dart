@@ -135,6 +135,30 @@ final quickRecipientsProvider = Provider<List<QuickRecipient>>((ref) {
   ];
 });
 
+/// Beneficiarios sugeridos para transferencias internas del Core Bancario (Tenant).
+final tenantBeneficiariesProvider = Provider<List<BeneficiaryAccount>>((ref) {
+  return const [
+    BeneficiaryAccount(
+      name: 'Carlos Ramírez',
+      accountNumber: '**** 9845',
+      currency: 'COP',
+      accountType: 'Ahorros',
+    ),
+    BeneficiaryAccount(
+      name: 'María Gómez',
+      accountNumber: '**** 3310',
+      currency: 'USD',
+      accountType: 'Corriente',
+    ),
+    BeneficiaryAccount(
+      name: 'Laura Torres',
+      accountNumber: '**** 7742',
+      currency: 'COP',
+      accountType: 'Ahorros',
+    ),
+  ];
+});
+
 /// Resultado automático de consultar una Llave (ej. Bre-B, celular, correo o documento).
 class ResolvedRecipient {
   final String displayName;
@@ -320,6 +344,105 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
     ];
   }
 
+  /// Ejecuta cualquier operación financiera del Core Bancario (Depósito, Retiro o Transferencia).
+  TransactionRecord executeOperation({
+    required FinancialOperationType operationType,
+    required ManagedBankAccount sourceAccount,
+    ManagedBankAccount? destinationOwnAccount,
+    String? destinationAccountNumber,
+    String? destinationHolderName,
+    String? destinationBankName,
+    required TransactionQuote quote,
+    required String description,
+    String? customIdempotencyKey,
+  }) {
+    final seq = _sequence++;
+    final now = DateTime.now();
+    final deltasNotifier = ref.read(accountBalanceDeltasProvider.notifier);
+
+    final MovementDirection direction;
+    final String title;
+    final String resolvedDestBank = destinationOwnAccount?.bankName ??
+        destinationBankName ??
+        sourceAccount.bankName;
+    final String resolvedDestAccount = destinationOwnAccount?.accountNumber ??
+        destinationAccountNumber ??
+        sourceAccount.accountNumber;
+    final String resolvedDestHolder = destinationOwnAccount?.title ??
+        destinationHolderName ??
+        sourceAccount.title;
+
+    switch (operationType) {
+      case FinancialOperationType.deposit:
+        deltasNotifier.applyDelta(sourceAccount.accountNumber, quote.amount);
+        direction = MovementDirection.incoming;
+        title = 'Depósito a ${sourceAccount.title}';
+        break;
+
+      case FinancialOperationType.withdrawal:
+        deltasNotifier.applyDelta(sourceAccount.accountNumber, -quote.amount);
+        direction = MovementDirection.outgoing;
+        title = 'Retiro de ${sourceAccount.title}';
+        break;
+
+      case FinancialOperationType.transfer:
+        deltasNotifier.applyDelta(sourceAccount.accountNumber, -quote.totalDebit);
+        if (destinationOwnAccount != null) {
+          deltasNotifier.applyDelta(
+            destinationOwnAccount.accountNumber,
+            quote.finalAmountReceived,
+          );
+          direction = MovementDirection.internalTransfer;
+          title = 'Traslado a ${destinationOwnAccount.bankName}';
+        } else {
+          direction = MovementDirection.outgoing;
+          title = 'Envío a $resolvedDestHolder';
+        }
+        break;
+    }
+
+    final idempKey = customIdempotencyKey ??
+        'idemp-bo-$seq-${now.millisecondsSinceEpoch % 10000}';
+    final corrId = 'corr-bo-$seq-${now.millisecondsSinceEpoch % 10000}';
+
+    final record = TransactionRecord(
+      id: 'txn-$seq',
+      referenceCode: 'BO-${now.year}-$seq',
+      operationType: operationType,
+      direction: direction,
+      title: title,
+      description: description.trim().isEmpty
+          ? (operationType == FinancialOperationType.deposit
+              ? 'Depósito en efectivo / corresponsal'
+              : operationType == FinancialOperationType.withdrawal
+                  ? 'Retiro en cajero o ventanilla'
+                  : (destinationOwnAccount != null
+                      ? 'Movimiento entre cuentas propias'
+                      : 'Transferencia inmediata'))
+          : description.trim(),
+      tenantName: sourceAccount.bankName,
+      sourceAccountNumber: sourceAccount.accountNumber,
+      sourceAccountTitle: sourceAccount.title,
+      sourceCurrency: quote.sourceCurrency,
+      destinationAccountNumber: resolvedDestAccount,
+      destinationHolderName: resolvedDestHolder,
+      destinationBankName: resolvedDestBank,
+      destinationCurrency: quote.destinationCurrency,
+      amount: quote.amount,
+      feeCharged: quote.feeAmount,
+      exchangeRateApplied: quote.exchangeRate,
+      finalAmountCredited: quote.finalAmountReceived,
+      status: 'COMPLETADA',
+      idempotencyKey: idempKey,
+      correlationId: corrId,
+      createdAt: now,
+    );
+
+    state = [record, ...state];
+    ref.read(selectedTransactionProvider.notifier).select(record);
+    return record;
+  }
+
   /// Ejecuta la transferencia en memoria, actualiza saldos y registra comprobante.
   TransactionRecord executeTransfer({
     required TransferScope scope,
@@ -330,71 +453,19 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
     required String destinationBankName,
     required TransactionQuote quote,
     required String description,
+    String? customIdempotencyKey,
   }) {
-    final seq = _sequence++;
-    final now = DateTime.now();
-
-    final deltasNotifier = ref.read(accountBalanceDeltasProvider.notifier);
-    deltasNotifier.applyDelta(sourceAccount.accountNumber, -quote.totalDebit);
-
-    if (scope == TransferScope.ownAccounts && destinationOwnAccount != null) {
-      deltasNotifier.applyDelta(
-        destinationOwnAccount.accountNumber,
-        quote.amount,
-      );
-    }
-
-    final resolvedDestBank = scope == TransferScope.ownAccounts &&
-            destinationOwnAccount != null
-        ? destinationOwnAccount.bankName
-        : destinationBankName;
-
-    final resolvedDestKey = scope == TransferScope.ownAccounts &&
-            destinationOwnAccount != null
-        ? destinationOwnAccount.accountNumber
-        : destinationKey.trim();
-
-    final resolvedDestLabel = scope == TransferScope.ownAccounts &&
-            destinationOwnAccount != null
-        ? destinationOwnAccount.title
-        : (destinationLabel.trim().isNotEmpty
-            ? destinationLabel.trim()
-            : destinationKey.trim());
-
-    final title = scope == TransferScope.ownAccounts
-        ? 'Traslado a $resolvedDestBank'
-        : 'Envío a $resolvedDestLabel';
-
-    final record = TransactionRecord(
-      id: 'txn-$seq',
-      referenceCode: 'BO-${now.year}-$seq',
-      scope: scope,
-      direction: scope == TransferScope.ownAccounts
-          ? MovementDirection.internalTransfer
-          : MovementDirection.outgoing,
-      title: title,
-      description: description.trim().isEmpty
-          ? (scope == TransferScope.ownAccounts
-              ? 'Movimiento entre cuentas propias'
-              : 'Transferencia inmediata')
-          : description.trim(),
-      sourceBankName: sourceAccount.bankName,
-      sourceAccountNumber: sourceAccount.accountNumber,
-      sourceAccountTitle: sourceAccount.title,
-      destinationBankName: resolvedDestBank,
-      destinationKeyOrAccount: resolvedDestKey,
-      destinationLabel: resolvedDestLabel,
-      amount: quote.amount,
-      currency: quote.currency,
-      feeCharged: quote.feeAmount,
-      status: 'COMPLETADA',
-      idempotencyKey: 'idemp-bo-$seq-${now.millisecondsSinceEpoch % 10000}',
-      createdAt: now,
+    return executeOperation(
+      operationType: FinancialOperationType.transfer,
+      sourceAccount: sourceAccount,
+      destinationOwnAccount: destinationOwnAccount,
+      destinationAccountNumber: destinationKey,
+      destinationHolderName: destinationLabel,
+      destinationBankName: destinationBankName,
+      quote: quote,
+      description: description,
+      customIdempotencyKey: customIdempotencyKey,
     );
-
-    state = [record, ...state];
-    ref.read(selectedTransactionProvider.notifier).select(record);
-    return record;
   }
 }
 
@@ -425,7 +496,20 @@ final activeReceiptProvider = Provider<TransactionRecord?>((ref) {
   return history.isNotEmpty ? history.first : null;
 });
 
-/// Filtros del historial: banco seleccionado (`null` = todos) y búsqueda de texto.
+/// Filtros del historial: operación, banco seleccionado y búsqueda de texto.
+class HistoryOperationFilterNotifier
+    extends Notifier<FinancialOperationType?> {
+  @override
+  FinancialOperationType? build() => null;
+
+  void setOperation(FinancialOperationType? type) => state = type;
+}
+
+final historyOperationFilterProvider =
+    NotifierProvider<HistoryOperationFilterNotifier, FinancialOperationType?>(
+  HistoryOperationFilterNotifier.new,
+);
+
 class HistoryBankFilterNotifier extends Notifier<String?> {
   @override
   String? build() => null;
@@ -479,14 +563,18 @@ final availableHistoryBanksProvider = Provider<List<String>>((ref) {
   return banks.toList();
 });
 
-/// Historial filtrado por banco, tipo (personal/externo) y búsqueda libre.
+/// Historial filtrado por operación, banco, tipo (personal/externo) y búsqueda libre.
 final filteredTransactionsProvider = Provider<List<TransactionRecord>>((ref) {
   final all = ref.watch(transactionsHistoryProvider);
+  final opFilter = ref.watch(historyOperationFilterProvider);
   final bankFilter = ref.watch(historyBankFilterProvider);
   final scopeFilter = ref.watch(historyScopeFilterProvider);
   final query = ref.watch(historySearchQueryProvider).trim().toLowerCase();
 
   return all.where((tx) {
+    if (opFilter != null && tx.operationType != opFilter) {
+      return false;
+    }
     if (bankFilter != null && !tx.involvesBank(bankFilter)) {
       return false;
     }

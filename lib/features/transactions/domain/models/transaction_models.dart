@@ -1,19 +1,35 @@
 import 'package:flutter/material.dart';
 
-/// Alcance de la transferencia dentro de la billetera multibanco BankOs.
+/// Tipos de operaciones financieras soportadas en el core bancario BankOS.
+enum FinancialOperationType {
+  transfer,
+  deposit,
+  withdrawal;
+
+  String get label => switch (this) {
+        FinancialOperationType.transfer => 'Transferencia',
+        FinancialOperationType.deposit => 'Depósito',
+        FinancialOperationType.withdrawal => 'Retiro',
+      };
+
+  IconData get icon => switch (this) {
+        FinancialOperationType.transfer => Icons.swap_horiz_rounded,
+        FinancialOperationType.deposit => Icons.arrow_downward_rounded,
+        FinancialOperationType.withdrawal => Icons.arrow_upward_rounded,
+      };
+}
+
+/// Compatibilidad con código previo.
 enum TransferScope {
   externalPerson,
   ownAccounts;
 
   String get label => switch (this) {
-        TransferScope.externalPerson => 'A otra persona',
+        TransferScope.externalPerson => 'A otra cuenta',
         TransferScope.ownAccounts => 'Entre mis cuentas',
       };
 
-  String get shortBadgeLabel => switch (this) {
-        TransferScope.externalPerson => 'A otra persona',
-        TransferScope.ownAccounts => 'Entre mis cuentas',
-      };
+  String get shortBadgeLabel => label;
 
   IconData get icon => switch (this) {
         TransferScope.externalPerson => Icons.person_outline_rounded,
@@ -21,7 +37,7 @@ enum TransferScope {
       };
 }
 
-/// Dirección contable del movimiento para la presentación visual en historial.
+/// Dirección contable del movimiento para presentación visual y KPIs.
 enum MovementDirection {
   outgoing,
   incoming,
@@ -31,9 +47,44 @@ enum MovementDirection {
   bool get isInternal => this == MovementDirection.internalTransfer;
 }
 
-/// Política configurable de comisiones.
-/// Actualmente opera con [FeePolicy.zero] (sin comisión), dejando lista la
-/// lógica de comisión fija o porcentual para futuras reglas desde backend.
+/// Límites máximos por transacción configurables por Tenant.
+class TenantLimits {
+  const TenantLimits._();
+
+  static const double maxLimitCop = 5000000; // $5.000.000 COP
+  static const double maxLimitUsd = 1250; // $1.250 USD
+  static const double maxLimitEur = 1150; // €1.150 EUR
+
+  static double maxLimitFor(String currency) {
+    return switch (currency.toUpperCase()) {
+      'USD' => maxLimitUsd,
+      'EUR' => maxLimitEur,
+      _ => maxLimitCop,
+    };
+  }
+}
+
+/// Tabla estática de tasas de cambio parametrizada por el Tenant (BaaS).
+class TenantExchangeRates {
+  const TenantExchangeRates._();
+
+  static double getRate(String fromCurrency, String toCurrency) {
+    final from = fromCurrency.toUpperCase();
+    final to = toCurrency.toUpperCase();
+    if (from == to) return 1.0;
+
+    if (from == 'USD' && to == 'COP') return 4000.0;
+    if (from == 'COP' && to == 'USD') return 1.0 / 4000.0;
+    if (from == 'EUR' && to == 'USD') return 1.08;
+    if (from == 'USD' && to == 'EUR') return 1.0 / 1.08;
+    if (from == 'EUR' && to == 'COP') return 4320.0;
+    if (from == 'COP' && to == 'EUR') return 1.0 / 4320.0;
+
+    return 1.0;
+  }
+}
+
+/// Política de comisión parametrizada por Tenant (fija o porcentual).
 enum FeePolicyType { zero, fixed, percentage }
 
 class FeePolicy {
@@ -63,7 +114,7 @@ class FeePolicy {
   }
 }
 
-/// Cuenta bancaria enriquecida con identidad de banco dentro de BankOs.
+/// Cuenta bancaria del cliente en su Tenant de BankOS.
 class ManagedBankAccount {
   final String bankName;
   final String title;
@@ -85,7 +136,14 @@ class ManagedBankAccount {
 
   bool get isActive => status.toUpperCase() == 'ACTIVA';
 
-  String get displayLabel => '$bankName · $accountNumber';
+  String get displayLabel => '$title · $accountNumber';
+
+  /// Nombre y tipo unificado con los últimos dígitos: `Banco Andino - Local (**8821)`.
+  String get formattedAccountSummary => CurrencyFormatter.formatAccountDisplay(
+        bankName: bankName,
+        title: title,
+        accountNumber: accountNumber,
+      );
 
   ManagedBankAccount copyWith({double? balance}) {
     return ManagedBankAccount(
@@ -100,7 +158,22 @@ class ManagedBankAccount {
   }
 }
 
-/// Destinatario frecuente de prueba para agilizar transferencias por Llave.
+/// Beneficiario sugerido para pruebas de transferencias en el tenant.
+class BeneficiaryAccount {
+  final String name;
+  final String accountNumber;
+  final String currency;
+  final String accountType;
+
+  const BeneficiaryAccount({
+    required this.name,
+    required this.accountNumber,
+    required this.currency,
+    required this.accountType,
+  });
+}
+
+/// Compatibilidad con selector previo de contactos rápidos.
 class QuickRecipient {
   final String name;
   final String keyValue;
@@ -115,94 +188,181 @@ class QuickRecipient {
   });
 }
 
-/// Resultado de la pre-cotización / validación antes de autorizar el envío.
+/// Resultado de la pre-cotización / resumen previo a autorizar con PIN.
 class TransactionQuote {
-  final TransferScope scope;
-  final String currency;
+  final FinancialOperationType operationType;
+  final String sourceCurrency;
+  final String destinationCurrency;
   final double amount;
   final double feeAmount;
+  final double exchangeRate;
+  final double finalAmountReceived;
   final double totalDebit;
+  final bool isCrossCurrency;
   final bool isValid;
   final String? validationError;
 
   const TransactionQuote({
-    required this.scope,
-    required this.currency,
+    required this.operationType,
+    required this.sourceCurrency,
+    required this.destinationCurrency,
     required this.amount,
     required this.feeAmount,
+    required this.exchangeRate,
+    required this.finalAmountReceived,
     required this.totalDebit,
+    required this.isCrossCurrency,
     required this.isValid,
     this.validationError,
   });
+
+  String get currency => sourceCurrency;
+
+  TransferScope get scope =>
+      operationType == FinancialOperationType.transfer
+          ? TransferScope.externalPerson
+          : TransferScope.ownAccounts;
 }
 
-/// Registro histórico y comprobante de una transacción multibanco.
+/// Registro histórico y comprobante de una operación bancaria en BankOS.
 class TransactionRecord {
   final String id;
   final String referenceCode;
+  final FinancialOperationType operationType;
   final TransferScope scope;
   final MovementDirection direction;
   final String title;
   final String description;
-  final String sourceBankName;
+  final String tenantName;
   final String sourceAccountNumber;
   final String sourceAccountTitle;
-  final String destinationBankName;
-  final String destinationKeyOrAccount;
-  final String destinationLabel;
+  final String sourceCurrency;
+  final String destinationAccountNumber;
+  final String destinationHolderName;
+  final String destinationCurrency;
   final double amount;
-  final String currency;
   final double feeCharged;
+  final double exchangeRateApplied;
+  final double finalAmountCredited;
   final String status;
   final String idempotencyKey;
+  final String correlationId;
   final DateTime createdAt;
 
-  const TransactionRecord({
+  TransactionRecord({
     required this.id,
     required this.referenceCode,
-    required this.scope,
+    FinancialOperationType? operationType,
+    TransferScope? scope,
     required this.direction,
     required this.title,
     required this.description,
-    required this.sourceBankName,
+    String? tenantName,
+    String? sourceBankName,
     required this.sourceAccountNumber,
     required this.sourceAccountTitle,
-    required this.destinationBankName,
-    required this.destinationKeyOrAccount,
-    required this.destinationLabel,
+    String? sourceCurrency,
+    String? currency,
+    String? destinationAccountNumber,
+    String? destinationKeyOrAccount,
+    String? destinationHolderName,
+    String? destinationLabel,
+    String? destinationBankName,
+    String? destinationCurrency,
     required this.amount,
-    required this.currency,
-    required this.feeCharged,
+    this.feeCharged = 0,
+    double? exchangeRateApplied,
+    double? finalAmountCredited,
     required this.status,
     required this.idempotencyKey,
+    String? correlationId,
     required this.createdAt,
-  });
+  })  : operationType = operationType ??
+            (direction == MovementDirection.internalTransfer
+                ? FinancialOperationType.transfer
+                : (direction == MovementDirection.incoming
+                    ? FinancialOperationType.deposit
+                    : FinancialOperationType.transfer)),
+        scope = scope ??
+            (direction == MovementDirection.internalTransfer
+                ? TransferScope.ownAccounts
+                : TransferScope.externalPerson),
+        tenantName = tenantName ?? sourceBankName ?? 'Banco Andino',
+        sourceCurrency = (sourceCurrency ?? currency ?? 'COP').toUpperCase(),
+        destinationAccountNumber =
+            destinationAccountNumber ?? destinationKeyOrAccount ?? '****',
+        destinationHolderName =
+            destinationHolderName ?? destinationLabel ?? 'Destinatario',
+        destinationCurrency = (destinationCurrency ??
+                sourceCurrency ??
+                currency ??
+                'COP')
+            .toUpperCase(),
+        exchangeRateApplied = exchangeRateApplied ?? 1.0,
+        finalAmountCredited = finalAmountCredited ?? amount,
+        correlationId = correlationId ?? idempotencyKey;
 
-  double get totalAmount => amount + feeCharged;
+  bool get hadFee => feeCharged > 0;
+  bool get isCrossCurrency =>
+      sourceCurrency.toUpperCase() != destinationCurrency.toUpperCase();
 
-  String get bankRouteLabel => '$sourceBankName → $destinationBankName';
+  double get totalDebit => amount + feeCharged;
+  double get totalAmount => totalDebit;
+  String get currency => sourceCurrency;
 
-  bool involvesBank(String bankName) {
-    final normalized = bankName.toLowerCase();
-    return sourceBankName.toLowerCase() == normalized ||
-        destinationBankName.toLowerCase() == normalized;
+  String get sourceBankName => tenantName;
+  String get destinationBankName => tenantName;
+  String get destinationLabel => destinationHolderName;
+  String get destinationKeyOrAccount => destinationAccountNumber;
+
+  bool involvesBank(String bankName) => true;
+
+  String get bankRouteLabel => switch (operationType) {
+        FinancialOperationType.transfer =>
+          isCrossCurrency
+              ? '$sourceCurrency → $destinationCurrency (FX: $exchangeRateApplied)'
+              : '$tenantName · Transferencia',
+        FinancialOperationType.deposit => '$tenantName · Depósito',
+        FinancialOperationType.withdrawal => '$tenantName · Retiro',
+      };
+
+  String get formattedSourceAccount => CurrencyFormatter.formatAccountDisplay(
+        bankName: tenantName,
+        title: sourceAccountTitle,
+        accountNumber: sourceAccountNumber,
+      );
+
+  String get formattedDestinationAccount {
+    if (operationType == FinancialOperationType.transfer) {
+      return '$destinationHolderName ($destinationAccountNumber)';
+    }
+    return formattedSourceAccount;
   }
 
   /// Texto limpio para compartir por WhatsApp, correo o portapapeles.
   String toShareableText() {
     final buffer = StringBuffer()
-      ..writeln('BankOs · Comprobante de Transferencia')
+      ..writeln('BankOS · Comprobante de ${operationType.label}')
+      ..writeln('Institución: $tenantName')
       ..writeln('Estado: $status')
-      ..writeln('Tipo: ${scope.label}')
-      ..writeln('Ruta: $bankRouteLabel')
-      ..writeln('Monto: ${CurrencyFormatter.format(amount, currency)}')
-      ..writeln('Comisión: ${CurrencyFormatter.format(feeCharged, currency)}')
-      ..writeln('Total: ${CurrencyFormatter.format(totalAmount, currency)}')
-      ..writeln('Origen: $sourceBankName ($sourceAccountNumber)')
-      ..writeln('Destino: $destinationLabel ($destinationKeyOrAccount)')
-      ..writeln('Banco destino: $destinationBankName')
       ..writeln('Referencia: $referenceCode')
-      ..writeln('Fecha: ${CurrencyFormatter.formatDateTime(createdAt)}');
+      ..writeln('Fecha: ${CurrencyFormatter.formatDateTime(createdAt)}')
+      ..writeln('Cuenta origen: $formattedSourceAccount');
+
+    if (operationType == FinancialOperationType.transfer) {
+      buffer.writeln('Destinatario: $destinationHolderName ($destinationAccountNumber)');
+      if (isCrossCurrency) {
+        buffer.writeln(
+            'Tasa de cambio: 1 $sourceCurrency = $exchangeRateApplied $destinationCurrency');
+        buffer.writeln(
+            'Monto a recibir: ${CurrencyFormatter.format(finalAmountCredited, destinationCurrency)}');
+      }
+    }
+
+    buffer.writeln('Monto: ${CurrencyFormatter.format(amount, sourceCurrency)}');
+    buffer.writeln('Comisión: ${CurrencyFormatter.format(feeCharged, sourceCurrency)}');
+    buffer.writeln('Total debitado: ${CurrencyFormatter.format(totalDebit, sourceCurrency)}');
+    buffer.writeln('Idempotency-Key: $idempotencyKey');
 
     if (description.trim().isNotEmpty) {
       buffer.writeln('Descripción: $description');
@@ -212,7 +372,7 @@ class TransactionRecord {
   }
 }
 
-/// Utilidades de formato monetario y fecha en Dart puro (sin paquete intl).
+/// Utilidades de formato monetario y fecha en Dart puro.
 class CurrencyFormatter {
   const CurrencyFormatter._();
 
@@ -273,12 +433,33 @@ class CurrencyFormatter {
     return '$day $month ${date.year} · $hour12:$minute $period';
   }
 
+  /// Unifica banco, tipo de cuenta y últimos 4 dígitos: `Banco Andino - Local (**8821)`.
+  static String formatAccountDisplay({
+    required String bankName,
+    required String title,
+    required String accountNumber,
+  }) {
+    final cleanTitle = title
+        .replaceAll(
+          RegExp(
+            r'^(Cuenta|Billetera|Mi Cuenta|Bolsillo)\s+',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+    final cleanDigits = accountNumber.replaceAll(RegExp(r'[^0-9]'), '');
+    final masked = cleanDigits.length >= 4
+        ? '**${cleanDigits.substring(cleanDigits.length - 4)}'
+        : accountNumber.replaceAll('****', '**').replaceAll(' ', '');
+    return '$bankName - $cleanTitle ($masked)';
+  }
+
   static double? parseAmountInput(String raw, String currency) {
     final cleaned = raw.trim().replaceAll(RegExp(r'[\$\€\s]'), '');
     if (cleaned.isEmpty) return null;
 
     if (currency.toUpperCase() == 'COP') {
-      // En COP los puntos suelen ser separadores de miles (ej. 50.000).
       final normalized = cleaned.replaceAll('.', '').replaceAll(',', '.');
       return double.tryParse(normalized);
     }

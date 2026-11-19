@@ -166,4 +166,93 @@ void main() {
       expect(find.text('\$100.000 COP'), findsWidgets);
     },
   );
+
+  testWidgets(
+    'flujo de depósito: abona saldo a cuenta seleccionada y emite comprobante de depósito',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_buildTestApp());
+      await tester.pumpAndSettle();
+
+      // Cambiar operación a Depósito.
+      await tester.tap(find.byKey(const Key('op_tab_deposit')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Depositar Dinero'), findsOneWidget);
+      expect(find.text('Cuenta destino (abono)'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('amount_field')), '150000');
+      await tester.pumpAndSettle();
+
+      final reviewBtn = find.byKey(const Key('review_transfer_button'));
+      await tester.ensureVisible(reviewBtn);
+      await tester.tap(reviewBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Resumen de Depósito'), findsOneWidget);
+
+      for (final digit in ['1', '2', '3', '4']) {
+        await tester.tap(find.byKey(Key('pin_key_$digit')));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('Depósito exitoso'), findsOneWidget);
+      expect(find.text('\$150.000 COP'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'demostración de idempotencia: simulación de fallo 504 y reintento con la misma llave',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_buildTestApp());
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('destination_key_field')),
+        '3001234567',
+      );
+      await tester.enterText(find.byKey(const Key('amount_field')), '30000');
+      await tester.pumpAndSettle();
+
+      final reviewBtn = find.byKey(const Key('review_transfer_button'));
+      await tester.ensureVisible(reviewBtn);
+      await tester.tap(reviewBtn);
+      await tester.pumpAndSettle();
+
+      // Verificar sección de Idempotencia
+      expect(find.text('Seguridad ACID & Idempotencia BankOS'), findsOneWidget);
+
+      // Simular fallo de red
+      await tester.tap(find.text('Simular fallo de red en vuelo'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Error 504: Fallo de Red Simulado en Vuelo'),
+        findsOneWidget,
+      );
+
+      // Reintentar con la misma llave
+      await tester.tap(
+        find.text('Reintentar con la misma llave (Cero doble cobro)'),
+      );
+      await tester.pumpAndSettle();
+
+      // Completar PIN
+      for (final digit in ['1', '2', '3', '4']) {
+        await tester.tap(find.byKey(Key('pin_key_$digit')));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('Transferencia exitosa'), findsOneWidget);
+    },
+  );
 }
