@@ -19,7 +19,7 @@ enum FinancialOperationType {
       };
 }
 
-/// Compatibilidad con código previo.
+/// Alcance de la transferencia iniciada desde el banco activo.
 enum TransferScope {
   externalPerson,
   ownAccounts;
@@ -234,6 +234,8 @@ class TransactionRecord {
   final String title;
   final String description;
   final String tenantName;
+  final String sourceBankName;
+  final String destinationBankName;
   final String sourceAccountNumber;
   final String sourceAccountTitle;
   final String sourceCurrency;
@@ -252,12 +254,12 @@ class TransactionRecord {
   TransactionRecord({
     required this.id,
     required this.referenceCode,
-    FinancialOperationType? operationType,
+    this.operationType = FinancialOperationType.transfer,
     TransferScope? scope,
     required this.direction,
     required this.title,
     required this.description,
-    String? tenantName,
+    required this.tenantName,
     String? sourceBankName,
     required this.sourceAccountNumber,
     required this.sourceAccountTitle,
@@ -277,17 +279,12 @@ class TransactionRecord {
     required this.idempotencyKey,
     String? correlationId,
     required this.createdAt,
-  })  : operationType = operationType ??
-            (direction == MovementDirection.internalTransfer
-                ? FinancialOperationType.transfer
-                : (direction == MovementDirection.incoming
-                    ? FinancialOperationType.deposit
-                    : FinancialOperationType.transfer)),
-        scope = scope ??
+  })  : scope = scope ??
             (direction == MovementDirection.internalTransfer
                 ? TransferScope.ownAccounts
                 : TransferScope.externalPerson),
-        tenantName = tenantName ?? sourceBankName ?? 'Banco Andino',
+         sourceBankName = sourceBankName ?? tenantName,
+         destinationBankName = destinationBankName ?? tenantName,
         sourceCurrency = (sourceCurrency ?? currency ?? 'COP').toUpperCase(),
         destinationAccountNumber =
             destinationAccountNumber ?? destinationKeyOrAccount ?? '****',
@@ -310,12 +307,14 @@ class TransactionRecord {
   double get totalAmount => totalDebit;
   String get currency => sourceCurrency;
 
-  String get sourceBankName => tenantName;
-  String get destinationBankName => tenantName;
   String get destinationLabel => destinationHolderName;
   String get destinationKeyOrAccount => destinationAccountNumber;
 
-  bool involvesBank(String bankName) => true;
+  bool involvesBank(String bankName) {
+    final normalized = bankName.trim().toLowerCase();
+    return sourceBankName.trim().toLowerCase() == normalized ||
+        destinationBankName.trim().toLowerCase() == normalized;
+  }
 
   String get bankRouteLabel => switch (operationType) {
         FinancialOperationType.transfer =>
@@ -327,7 +326,7 @@ class TransactionRecord {
       };
 
   String get formattedSourceAccount => CurrencyFormatter.formatAccountDisplay(
-        bankName: tenantName,
+        bankName: sourceBankName,
         title: sourceAccountTitle,
         accountNumber: sourceAccountNumber,
       );

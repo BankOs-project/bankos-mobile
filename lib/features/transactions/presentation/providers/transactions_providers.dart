@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../accounts/presentation/providers/accounts_mock_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/services/quote_calculator_service.dart';
 import '../../domain/models/transaction_models.dart';
 
@@ -15,12 +16,13 @@ final quoteCalculatorProvider = Provider<QuoteCalculatorService>((ref) {
   return const QuoteCalculatorService();
 });
 
-/// Ajustes de saldo en memoria por número de cuenta.
-/// Evita modificar `accounts_mock_provider.dart` (módulo de Persona 2) para
-/// prevenir conflictos de merge.
+/// Ajustes de saldo de demostración para la sesión activa.
 class AccountBalanceDeltasNotifier extends Notifier<Map<String, double>> {
   @override
-  Map<String, double> build() => const {};
+  Map<String, double> build() {
+    ref.watch(activeSessionProvider);
+    return const {};
+  }
 
   void applyDelta(String accountNumber, double delta) {
     final current = state[accountNumber] ?? 0;
@@ -36,10 +38,9 @@ final accountBalanceDeltasProvider =
   AccountBalanceDeltasNotifier.new,
 );
 
-/// Cuentas gestionadas dentro de la billetera multibanco BankOs.
-/// Toma como base `accountsMockProvider`, asigna identidad de banco y suma
-/// cuentas adicionales en COP para permitir transferencias reales entre bancos propios.
+/// Cuentas de demostración para los selectores de transferencias del banco activo.
 final managedAccountsProvider = Provider<List<ManagedBankAccount>>((ref) {
+  final bankName = ref.watch(activeSessionProvider)?.bankLabel ?? 'BankOs';
   final baseAccounts = ref.watch(accountsMockProvider);
   final deltas = ref.watch(accountBalanceDeltasProvider);
 
@@ -48,11 +49,6 @@ final managedAccountsProvider = Provider<List<ManagedBankAccount>>((ref) {
   for (final account in baseAccounts) {
     final isCop = account.currency.toUpperCase() == 'COP';
     final isUsd = account.currency.toUpperCase() == 'USD';
-    final bankName = isCop
-        ? 'Bancolombia'
-        : isUsd
-            ? 'Nu Colombia'
-            : 'Banco de Bogotá';
     final accent = isCop
         ? AppTheme.primaryColor
         : isUsd
@@ -73,10 +69,10 @@ final managedAccountsProvider = Provider<List<ManagedBankAccount>>((ref) {
     );
   }
 
-  // Cuentas adicionales en COP para pruebas multibanco "Entre mis cuentas".
+  // Cuentas adicionales en COP para probar traslados dentro del banco activo.
   final extraCopAccounts = [
     ManagedBankAccount(
-      bankName: 'Davivienda',
+      bankName: bankName,
       title: 'Cuenta Ahorros',
       accountNumber: '**** 3310',
       currency: 'COP',
@@ -85,7 +81,7 @@ final managedAccountsProvider = Provider<List<ManagedBankAccount>>((ref) {
       accentColor: AppTheme.errorColor,
     ),
     ManagedBankAccount(
-      bankName: 'Nequi',
+      bankName: bankName,
       title: 'Bolsillo Diario',
       accountNumber: '**** 7742',
       currency: 'COP',
@@ -220,6 +216,8 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
 
   @override
   List<TransactionRecord> build() {
+    final bankName = ref.watch(activeSessionProvider)?.bankLabel ?? 'BankOs';
+    _sequence = 1007;
     return [
       TransactionRecord(
         id: 'txn-1006',
@@ -228,10 +226,11 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
         direction: MovementDirection.internalTransfer,
         title: 'Traslado entre mis cuentas',
         description: 'Ahorro mensual',
-        sourceBankName: 'Bancolombia',
+        tenantName: bankName,
+        sourceBankName: bankName,
         sourceAccountNumber: '**** 8821',
         sourceAccountTitle: 'Billetera Local',
-        destinationBankName: 'Davivienda',
+        destinationBankName: bankName,
         destinationKeyOrAccount: '**** 3310',
         destinationLabel: 'Mi Cuenta Ahorros',
         amount: 350000,
@@ -248,7 +247,8 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
         direction: MovementDirection.outgoing,
         title: 'Envío a María Gómez',
         description: 'Almuerzo equipo',
-        sourceBankName: 'Bancolombia',
+        tenantName: bankName,
+        sourceBankName: bankName,
         sourceAccountNumber: '**** 8821',
         sourceAccountTitle: 'Billetera Local',
         destinationBankName: 'Nequi',
@@ -268,10 +268,11 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
         direction: MovementDirection.incoming,
         title: 'Transferencia recibida · Juan Varela',
         description: 'Pago proyecto compartido',
+        tenantName: bankName,
         sourceBankName: 'Davivienda',
         sourceAccountNumber: '**** 9120',
         sourceAccountTitle: 'Cuenta externa',
-        destinationBankName: 'Bancolombia',
+        destinationBankName: bankName,
         destinationKeyOrAccount: '**** 8821',
         destinationLabel: 'Billetera Local',
         amount: 280000,
@@ -288,10 +289,11 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
         direction: MovementDirection.internalTransfer,
         title: 'Recarga bolsillo diario',
         description: 'Gastos de la semana',
-        sourceBankName: 'Davivienda',
+        tenantName: bankName,
+        sourceBankName: bankName,
         sourceAccountNumber: '**** 3310',
         sourceAccountTitle: 'Cuenta Ahorros',
-        destinationBankName: 'Nequi',
+        destinationBankName: bankName,
         destinationKeyOrAccount: '**** 7742',
         destinationLabel: 'Mi Bolsillo Diario',
         amount: 150000,
@@ -308,7 +310,8 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
         direction: MovementDirection.outgoing,
         title: 'Envío a Carlos Ramírez',
         description: 'Cuota transporte',
-        sourceBankName: 'Nequi',
+        tenantName: bankName,
+        sourceBankName: bankName,
         sourceAccountNumber: '**** 7742',
         sourceAccountTitle: 'Bolsillo Diario',
         destinationBankName: 'Bancolombia',
@@ -328,10 +331,11 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
         direction: MovementDirection.incoming,
         title: 'Transferencia recibida · Adriano G.',
         description: 'Reembolso suscripción',
+        tenantName: bankName,
         sourceBankName: 'Nu Colombia',
         sourceAccountNumber: '**** 6044',
         sourceAccountTitle: 'Cuenta externa',
-        destinationBankName: 'Nu Colombia',
+        destinationBankName: bankName,
         destinationKeyOrAccount: '**** 4589',
         destinationLabel: 'Cuenta Principal',
         amount: 120.00,
@@ -426,7 +430,9 @@ class TransactionsHistoryNotifier extends Notifier<List<TransactionRecord>> {
       sourceCurrency: quote.sourceCurrency,
       destinationAccountNumber: resolvedDestAccount,
       destinationHolderName: resolvedDestHolder,
-      destinationBankName: resolvedDestBank,
+      destinationBankName: operationType == FinancialOperationType.transfer
+          ? resolvedDestBank
+          : sourceAccount.bankName,
       destinationCurrency: quote.destinationCurrency,
       amount: quote.amount,
       feeCharged: quote.feeAmount,
@@ -477,7 +483,10 @@ final transactionsHistoryProvider =
 /// Comprobante actualmente seleccionado para `SummaryScreen`.
 class SelectedTransactionNotifier extends Notifier<TransactionRecord?> {
   @override
-  TransactionRecord? build() => null;
+  TransactionRecord? build() {
+    ref.watch(activeSessionProvider);
+    return null;
+  }
 
   void select(TransactionRecord record) => state = record;
 }
@@ -500,7 +509,10 @@ final activeReceiptProvider = Provider<TransactionRecord?>((ref) {
 class HistoryOperationFilterNotifier
     extends Notifier<FinancialOperationType?> {
   @override
-  FinancialOperationType? build() => null;
+  FinancialOperationType? build() {
+    ref.watch(activeSessionProvider);
+    return null;
+  }
 
   void setOperation(FinancialOperationType? type) => state = type;
 }
@@ -512,7 +524,10 @@ final historyOperationFilterProvider =
 
 class HistoryBankFilterNotifier extends Notifier<String?> {
   @override
-  String? build() => null;
+  String? build() {
+    ref.watch(activeSessionProvider);
+    return null;
+  }
 
   void setBank(String? bankName) => state = bankName;
 }

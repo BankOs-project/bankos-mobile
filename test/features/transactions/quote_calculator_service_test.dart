@@ -124,6 +124,32 @@ void main() {
       expect(sameAccount.isValid, isFalse);
     });
 
+    test('ignora una llave anterior si falta la cuenta propia de destino', () {
+      final quote = service.calculate(
+        scope: TransferScope.ownAccounts,
+        sourceAccount: activeBancolombia,
+        destinationKey: '3004567890',
+        amount: 20000,
+        feePolicy: const FeePolicy.zero(),
+      );
+
+      expect(quote.isValid, isFalse);
+      expect(quote.validationError, contains('cuenta destino propia'));
+    });
+
+    test('rechaza una cuenta de destino inactiva', () {
+      final quote = service.calculate(
+        scope: TransferScope.ownAccounts,
+        sourceAccount: activeBancolombia,
+        destinationOwnAccount: inactiveAccount,
+        amount: 20000,
+        feePolicy: const FeePolicy.zero(),
+      );
+
+      expect(quote.isValid, isFalse);
+      expect(quote.validationError, contains('destino está inactiva'));
+    });
+
     test('rechaza monto menor o igual a cero', () {
       final zeroQuote = service.calculate(
         operationType: FinancialOperationType.transfer,

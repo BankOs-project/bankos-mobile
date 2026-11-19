@@ -11,9 +11,6 @@ import '../../domain/models/dashboard_models.dart';
 final dashboardDateFilterProvider =
     StateProvider<DashboardDateFilter>((ref) => DashboardDateFilter.monthly);
 
-/// Cuenta seleccionada para redirección y configuración en la sección de cuentas.
-final selectedAccountProvider = StateProvider<String?>((ref) => null);
-
 /// Gestor de widgets de gráficos visibles en el dashboard.
 /// Por defecto se muestran 'Flujo: Ingresos vs Gastos' y 'Gastos por Categoría'.
 class ActiveChartsNotifier extends Notifier<Set<DashboardChartType>> {
@@ -54,16 +51,10 @@ final activeDashboardChartsProvider =
   ActiveChartsNotifier.new,
 );
 
-/// Proveedor de cuentas para el slide horizontal del dashboard.
-/// Utiliza `managedAccountsProvider` para reflejar saldos en vivo con deltas.
-final dashboardAccountsProvider = Provider<List<ManagedBankAccount>>((ref) {
-  return ref.watch(managedAccountsProvider);
-});
-
 /// Proveedor de métricas clave (KPIs) calculadas según el filtro temporal seleccionado.
 final dashboardKpisProvider = Provider<DashboardKpis>((ref) {
   final filter = ref.watch(dashboardDateFilterProvider);
-  final accounts = ref.watch(dashboardAccountsProvider);
+  final accounts = ref.watch(managedAccountsProvider);
   final transactions = ref.watch(transactionsHistoryProvider);
 
   // Balance total consolidado por moneda

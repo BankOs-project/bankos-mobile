@@ -39,7 +39,7 @@ class DashboardQuickActions extends ConsumerWidget {
             _QuickActionItem(
               key: const Key('quick_action_accounts'),
               icon: Icons.account_balance_rounded,
-              label: 'Mis Cuentas',
+              label: 'Cuentas',
               color: AppTheme.secondaryColor,
               onTap: () {
                 ref.read(bottomNavIndexProvider.notifier).state = 1;

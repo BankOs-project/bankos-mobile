@@ -56,14 +56,12 @@ class DashboardKpis {
 enum DashboardChartType {
   incomeVsExpense,
   expensesByCategory,
-  balanceEvolution,
-  bankDistribution;
+  balanceEvolution;
 
   String get title => switch (this) {
         DashboardChartType.incomeVsExpense => 'Flujo: Ingresos vs Gastos',
         DashboardChartType.expensesByCategory => 'Gastos por Categoría',
         DashboardChartType.balanceEvolution => 'Evolución del Balance',
-        DashboardChartType.bankDistribution => 'Distribución por Banco',
       };
 
   String get subtitle => switch (this) {
@@ -73,15 +71,12 @@ enum DashboardChartType {
           'Distribución porcentual de consumos y transferencias',
         DashboardChartType.balanceEvolution =>
           'Comportamiento y tendencia del saldo consolidado',
-        DashboardChartType.bankDistribution =>
-          'Fondos distribuidos en tus entidades vinculadas',
       };
 
   IconData get icon => switch (this) {
         DashboardChartType.incomeVsExpense => Icons.bar_chart_rounded,
         DashboardChartType.expensesByCategory => Icons.pie_chart_outline_rounded,
         DashboardChartType.balanceEvolution => Icons.show_chart_rounded,
-        DashboardChartType.bankDistribution => Icons.account_balance_rounded,
       };
 }
 

@@ -168,7 +168,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 ? destOwnAccount.title
                 : (resolvedRecipient?.displayName ?? _keyController.text.trim()));
 
-    final authorized = await TransferConfirmationSheet.show(
+    final authorizedKey = await TransferConfirmationSheet.show(
       context,
       scope: _scope,
       sourceAccount: sourceAccount,
@@ -179,7 +179,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       description: _descriptionController.text,
     );
 
-    if (authorized != true || !mounted) return;
+    if (authorizedKey == null || !mounted) return;
 
     ref.read(transactionsHistoryProvider.notifier).executeOperation(
           operationType: _operation,
@@ -193,6 +193,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
           destinationBankName: destBank,
           quote: quote,
           description: _descriptionController.text,
+          customIdempotencyKey: authorizedKey,
         );
 
     context.go('/transactions/summary');
@@ -225,7 +226,8 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
               _scope == TransferScope.ownAccounts
           ? destOwnAccount
           : null,
-      destinationKey: _keyController.text,
+      destinationKey:
+          _scope == TransferScope.externalPerson ? _keyController.text : null,
       amount: parsedAmount,
       feePolicy: feePolicy,
     );
@@ -398,7 +400,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                   const _SectionHeader(
                     title: 'Hacia (otra cuenta propia)',
                     subtitle:
-                        'Mueve dinero entre tus cuentas vinculadas',
+                         'Mueve dinero entre tus cuentas de este banco',
                   ),
                   const SizedBox(height: 10),
                   if (destOwnAccount != null)

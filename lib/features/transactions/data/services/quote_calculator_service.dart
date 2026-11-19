@@ -22,10 +22,7 @@ class QuoteCalculatorService {
     required double? amount,
     required FeePolicy feePolicy,
   }) {
-    final effectiveOperation = operationType ??
-        (scope == TransferScope.ownAccounts
-            ? FinancialOperationType.transfer
-            : FinancialOperationType.transfer);
+    final effectiveOperation = operationType ?? FinancialOperationType.transfer;
 
     final safeAmount = amount ?? 0;
     final sourceCurrency = sourceAccount.currency;
@@ -142,7 +139,16 @@ class QuoteCalculatorService {
 
       case FinancialOperationType.transfer:
         final cleanDest = resolvedDestNumber.trim();
-        if (cleanDest.length < 3) {
+        final destinationError = switch (destinationOwnAccount) {
+          null when scope == TransferScope.ownAccounts =>
+            'Selecciona una cuenta destino propia.',
+          final account? when !account.isActive =>
+            'La cuenta destino está inactiva.',
+          _ when cleanDest.length < 3 =>
+            'Ingresa un número de cuenta o destinatario válido.',
+          _ => null,
+        };
+        if (destinationError != null) {
           return TransactionQuote(
             operationType: effectiveOperation,
             sourceCurrency: sourceCurrency,
@@ -154,8 +160,7 @@ class QuoteCalculatorService {
             totalDebit: safeAmount,
             isCrossCurrency: false,
             isValid: false,
-            validationError:
-                'Ingresa un número de cuenta o destinatario válido.',
+            validationError: destinationError,
           );
         }
 

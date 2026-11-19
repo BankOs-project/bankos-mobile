@@ -31,7 +31,7 @@ class TransferConfirmationSheet extends StatefulWidget {
 
   static const String demoPin = '1234';
 
-  static Future<bool?> show(
+  static Future<String?> show(
     BuildContext context, {
     required TransferScope scope,
     required ManagedBankAccount sourceAccount,
@@ -41,7 +41,7 @@ class TransferConfirmationSheet extends StatefulWidget {
     required TransactionQuote quote,
     required String description,
   }) {
-    return showModalBottomSheet<bool>(
+    return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppTheme.cardColor,
@@ -67,15 +67,12 @@ class _TransferConfirmationSheetState extends State<TransferConfirmationSheet> {
   String _enteredPin = '';
   String? _pinError;
 
-  // Demostración obligatoria para jueces de Idempotencia y Resiliencia de red
   late final String _demoIdempotencyKey =
-      'idemp-${DateTime.now().millisecondsSinceEpoch % 1000000}';
-  late final String _demoCorrelationId =
-      'corr-${DateTime.now().millisecondsSinceEpoch % 1000000}';
+      'demo-${DateTime.now().microsecondsSinceEpoch}';
   bool _networkFailureSimulated = false;
 
   void _onDigitTap(String digit) {
-    if (_enteredPin.length >= 4) return;
+    if (_networkFailureSimulated || _enteredPin.length >= 4) return;
     setState(() {
       _pinError = null;
       _enteredPin += digit;
@@ -96,7 +93,7 @@ class _TransferConfirmationSheetState extends State<TransferConfirmationSheet> {
 
   void _validatePin() {
     if (_enteredPin == TransferConfirmationSheet.demoPin) {
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(_demoIdempotencyKey);
       return;
     }
 
@@ -161,28 +158,20 @@ class _TransferConfirmationSheetState extends State<TransferConfirmationSheet> {
               ),
               const SizedBox(height: 14),
 
-              // Caja de Idempotencia y simulación de resiliencia
-              _IdempotencyDemoBox(
+              _RetryDemoBox(
                 idempotencyKey: _demoIdempotencyKey,
-                correlationId: _demoCorrelationId,
                 simulatedFailure: _networkFailureSimulated,
                 onSimulateFailure: () {
                   setState(() {
                     _networkFailureSimulated = true;
+                    _enteredPin = '';
+                    _pinError = null;
                   });
                 },
                 onRetrySameKey: () {
                   setState(() {
                     _networkFailureSimulated = false;
                   });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Reintento exitoso con la misma llave. Transacción protegida contra duplicados.',
-                      ),
-                      backgroundColor: AppTheme.successColor,
-                    ),
-                  );
                 },
               ),
 
@@ -227,16 +216,14 @@ class _TransferConfirmationSheetState extends State<TransferConfirmationSheet> {
   }
 }
 
-class _IdempotencyDemoBox extends StatelessWidget {
+class _RetryDemoBox extends StatelessWidget {
   final String idempotencyKey;
-  final String correlationId;
   final bool simulatedFailure;
   final VoidCallback onSimulateFailure;
   final VoidCallback onRetrySameKey;
 
-  const _IdempotencyDemoBox({
+  const _RetryDemoBox({
     required this.idempotencyKey,
-    required this.correlationId,
     required this.simulatedFailure,
     required this.onSimulateFailure,
     required this.onRetrySameKey,
@@ -275,8 +262,8 @@ class _IdempotencyDemoBox extends StatelessWidget {
               Expanded(
                 child: Text(
                   simulatedFailure
-                      ? 'Error 504: Fallo de Red Simulado en Vuelo'
-                      : 'Seguridad ACID & Idempotencia BankOS',
+                      ? 'Error 504 simulado'
+                      : 'Simulación de reintento',
                   style: TextStyle(
                     color: simulatedFailure
                         ? AppTheme.errorColor
@@ -286,21 +273,11 @@ class _IdempotencyDemoBox extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                'Demo Jueces',
-                style: TextStyle(
-                  color: AppTheme.textMutedColor,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            simulatedFailure
-                ? 'Se perdió la conexión antes de confirmar. Gracias al Idempotency-Key, puedes reintentar sin riesgo de doble cobro.'
-                : 'Key: $idempotencyKey · Corr: $correlationId',
+            'Demostración local · Llave: $idempotencyKey',
             style: TextStyle(
               color: simulatedFailure
                   ? AppTheme.textPrimaryColor
@@ -320,7 +297,7 @@ class _IdempotencyDemoBox extends StatelessWidget {
               onPressed: onRetrySameKey,
               icon: const Icon(Icons.refresh_rounded, size: 16),
               label: const Text(
-                'Reintentar con la misma llave (Cero doble cobro)',
+                'Simular reintento con la misma llave',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
             )
@@ -335,7 +312,7 @@ class _IdempotencyDemoBox extends StatelessWidget {
               onPressed: onSimulateFailure,
               icon: const Icon(Icons.wifi_off_rounded, size: 14),
               label: const Text(
-                'Simular fallo de red en vuelo',
+                'Simular fallo de red',
                 style: TextStyle(fontSize: 11),
               ),
             ),
