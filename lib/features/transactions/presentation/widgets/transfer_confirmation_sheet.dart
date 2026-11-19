@@ -31,7 +31,7 @@ class TransferConfirmationSheet extends StatefulWidget {
 
   static const String demoPin = '1234';
 
-  static Future<bool?> show(
+  static Future<String?> show(
     BuildContext context, {
     required TransferScope scope,
     required ManagedBankAccount sourceAccount,
@@ -41,7 +41,7 @@ class TransferConfirmationSheet extends StatefulWidget {
     required TransactionQuote quote,
     required String description,
   }) {
-    return showModalBottomSheet<bool>(
+    return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppTheme.cardColor,
@@ -67,8 +67,12 @@ class _TransferConfirmationSheetState extends State<TransferConfirmationSheet> {
   String _enteredPin = '';
   String? _pinError;
 
+  late final String _demoIdempotencyKey =
+      'demo-${DateTime.now().microsecondsSinceEpoch}';
+  bool _networkFailureSimulated = false;
+
   void _onDigitTap(String digit) {
-    if (_enteredPin.length >= 4) return;
+    if (_networkFailureSimulated || _enteredPin.length >= 4) return;
     setState(() {
       _pinError = null;
       _enteredPin += digit;
@@ -89,7 +93,7 @@ class _TransferConfirmationSheetState extends State<TransferConfirmationSheet> {
 
   void _validatePin() {
     if (_enteredPin == TransferConfirmationSheet.demoPin) {
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(_demoIdempotencyKey);
       return;
     }
 
@@ -125,10 +129,15 @@ class _TransferConfirmationSheetState extends State<TransferConfirmationSheet> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Verifica tu envío',
-                      style: TextStyle(
+                      widget.quote.operationType == FinancialOperationType.deposit
+                          ? 'Resumen de Depósito'
+                          : widget.quote.operationType ==
+                                  FinancialOperationType.withdrawal
+                              ? 'Resumen de Retiro'
+                              : 'Verifica tu envío',
+                      style: const TextStyle(
                         color: AppTheme.textPrimaryColor,
                         fontSize: 19,
                         fontWeight: FontWeight.w700,
@@ -147,6 +156,25 @@ class _TransferConfirmationSheetState extends State<TransferConfirmationSheet> {
                 quote: widget.quote,
                 description: widget.description,
               ),
+              const SizedBox(height: 14),
+
+              _RetryDemoBox(
+                idempotencyKey: _demoIdempotencyKey,
+                simulatedFailure: _networkFailureSimulated,
+                onSimulateFailure: () {
+                  setState(() {
+                    _networkFailureSimulated = true;
+                    _enteredPin = '';
+                    _pinError = null;
+                  });
+                },
+                onRetrySameKey: () {
+                  setState(() {
+                    _networkFailureSimulated = false;
+                  });
+                },
+              ),
+
               const SizedBox(height: 18),
               const Text(
                 'Autoriza la operación',
@@ -188,6 +216,112 @@ class _TransferConfirmationSheetState extends State<TransferConfirmationSheet> {
   }
 }
 
+class _RetryDemoBox extends StatelessWidget {
+  final String idempotencyKey;
+  final bool simulatedFailure;
+  final VoidCallback onSimulateFailure;
+  final VoidCallback onRetrySameKey;
+
+  const _RetryDemoBox({
+    required this.idempotencyKey,
+    required this.simulatedFailure,
+    required this.onSimulateFailure,
+    required this.onRetrySameKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: simulatedFailure
+            ? AppTheme.errorColor.withValues(alpha: 0.12)
+            : AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(
+          color: simulatedFailure
+              ? AppTheme.errorColor
+              : AppTheme.outlineColor,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                simulatedFailure
+                    ? Icons.warning_amber_rounded
+                    : Icons.shield_outlined,
+                size: 16,
+                color: simulatedFailure
+                    ? AppTheme.errorColor
+                    : AppTheme.secondaryColor,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  simulatedFailure
+                      ? 'Error 504 simulado'
+                      : 'Simulación de reintento',
+                  style: TextStyle(
+                    color: simulatedFailure
+                        ? AppTheme.errorColor
+                        : AppTheme.textPrimaryColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Demostración local · Llave: $idempotencyKey',
+            style: TextStyle(
+              color: simulatedFailure
+                  ? AppTheme.textPrimaryColor
+                  : AppTheme.textSecondaryColor,
+              fontSize: 11,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (simulatedFailure)
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.warningColor,
+                foregroundColor: AppTheme.cardColor,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              onPressed: onRetrySameKey,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text(
+                'Simular reintento con la misma llave',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            )
+          else
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                side: BorderSide(
+                  color: AppTheme.outlineColor,
+                ),
+              ),
+              onPressed: onSimulateFailure,
+              icon: const Icon(Icons.wifi_off_rounded, size: 14),
+              label: const Text(
+                'Simular fallo de red',
+                style: TextStyle(fontSize: 11),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ConfirmationSummaryCard extends StatelessWidget {
   final ManagedBankAccount sourceAccount;
   final String destinationBankName;
@@ -207,6 +341,8 @@ class _ConfirmationSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final op = quote.operationType;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -220,7 +356,11 @@ class _ConfirmationSummaryCard extends StatelessWidget {
           Center(
             child: BankRoutePill(
               sourceBank: sourceAccount.bankName,
-              destinationBank: destinationBankName,
+              destinationBank: op == FinancialOperationType.deposit
+                  ? 'Depósito Core'
+                  : op == FinancialOperationType.withdrawal
+                      ? 'Retiro Cajero'
+                      : destinationBankName,
             ),
           ),
           const SizedBox(height: 10),
@@ -239,22 +379,47 @@ class _ConfirmationSummaryCard extends StatelessWidget {
           const Divider(),
           const SizedBox(height: 6),
           ReceiptKeyValueRow(
-            label: 'Desde',
+            label: 'Operación',
+            value: op.label,
+            boldValue: true,
+          ),
+          ReceiptKeyValueRow(
+            label: op == FinancialOperationType.deposit ? 'Hacia cuenta' : 'Desde',
             value:
                 '${sourceAccount.bankName} (${sourceAccount.accountNumber})',
           ),
+          if (op == FinancialOperationType.transfer) ...[
+            ReceiptKeyValueRow(
+              label: 'Destinatario',
+              value: destinationLabel == destinationKeyOrAccount
+                  ? destinationKeyOrAccount
+                  : '$destinationLabel ($destinationKeyOrAccount)',
+            ),
+            ReceiptKeyValueRow(
+              label: 'Banco destino',
+              value: destinationBankName,
+            ),
+            if (quote.isCrossCurrency) ...[
+              ReceiptKeyValueRow(
+                label: 'Tasa FX aplicada',
+                value:
+                    '1 ${quote.sourceCurrency} = ${quote.exchangeRate} ${quote.destinationCurrency}',
+                valueColor: AppTheme.infoColor,
+                boldValue: true,
+              ),
+              ReceiptKeyValueRow(
+                label: 'Monto a recibir',
+                value: CurrencyFormatter.format(
+                  quote.finalAmountReceived,
+                  quote.destinationCurrency,
+                ),
+                valueColor: AppTheme.successColor,
+                boldValue: true,
+              ),
+            ],
+          ],
           ReceiptKeyValueRow(
-            label: 'Hacia',
-            value: destinationLabel == destinationKeyOrAccount
-                ? destinationKeyOrAccount
-                : '$destinationLabel ($destinationKeyOrAccount)',
-          ),
-          ReceiptKeyValueRow(
-            label: 'Banco destino',
-            value: destinationBankName,
-          ),
-          ReceiptKeyValueRow(
-            label: 'Comisión',
+            label: 'Comisión del Tenant',
             value: CurrencyFormatter.format(quote.feeAmount, quote.currency),
             valueColor: quote.feeAmount == 0
                 ? AppTheme.successColor

@@ -83,7 +83,11 @@ class ReceiptTicketCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(
                   record.status == 'COMPLETADA'
-                      ? 'Transferencia exitosa'
+                      ? switch (record.operationType) {
+                          FinancialOperationType.deposit => 'Depósito exitoso',
+                          FinancialOperationType.withdrawal => 'Retiro exitoso',
+                          FinancialOperationType.transfer => 'Transferencia exitosa',
+                        }
                       : record.status,
                   style: const TextStyle(
                     color: AppTheme.successColor,
@@ -178,6 +182,24 @@ class ReceiptTicketCard extends StatelessWidget {
                       : AppTheme.warningColor,
                   boldValue: true,
                 ),
+                if (record.isCrossCurrency) ...[
+                  ReceiptKeyValueRow(
+                    label: 'Tasa FX',
+                    value:
+                        '1 ${record.sourceCurrency} = ${record.exchangeRateApplied} ${record.destinationCurrency}',
+                    valueColor: AppTheme.infoColor,
+                    boldValue: true,
+                  ),
+                  ReceiptKeyValueRow(
+                    label: 'Monto recibido',
+                    value: CurrencyFormatter.format(
+                      record.finalAmountCredited,
+                      record.destinationCurrency,
+                    ),
+                    valueColor: AppTheme.successColor,
+                    boldValue: true,
+                  ),
+                ],
                 ReceiptKeyValueRow(
                   label: 'Total',
                   value: CurrencyFormatter.format(
@@ -186,6 +208,10 @@ class ReceiptTicketCard extends StatelessWidget {
                   ),
                   valueColor: AppTheme.primaryColor,
                   boldValue: true,
+                ),
+                ReceiptKeyValueRow(
+                  label: 'Idempotency-Key',
+                  value: record.idempotencyKey,
                 ),
                 if (record.description.trim().isNotEmpty) ...[
                   const Padding(

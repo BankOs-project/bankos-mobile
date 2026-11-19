@@ -29,6 +29,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final banks = ref.watch(availableHistoryBanksProvider);
     final selectedBank = ref.watch(historyBankFilterProvider);
     final selectedScope = ref.watch(historyScopeFilterProvider);
+    final selectedOperation = ref.watch(historyOperationFilterProvider);
     final searchQuery = ref.watch(historySearchQueryProvider);
 
     return Scaffold(
@@ -36,7 +37,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         title: const Text('Historial'),
         actions: [
           IconButton(
-            tooltip: 'Nueva transferencia',
+            tooltip: 'Nueva operación',
             icon: const Icon(Icons.send_rounded, size: 20),
             onPressed: () => context.go('/transactions/transfer'),
           ),
@@ -57,7 +58,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       .setQuery(value);
                 },
                 decoration: InputDecoration(
-                  hintText: 'Buscar por banco, persona, llave o referencia...',
+                  hintText: 'Buscar por banco, persona, cuenta o referencia...',
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: searchQuery.isNotEmpty
                       ? IconButton(
@@ -73,6 +74,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 ),
               ),
             ),
+            _OperationFilterBar(
+              selectedOp: selectedOperation,
+              onSelected: (op) {
+                ref
+                    .read(historyOperationFilterProvider.notifier)
+                    .setOperation(op);
+              },
+            ),
+            const SizedBox(height: 8),
             _BankFilterBar(
               banks: banks,
               selectedBank: selectedBank,
@@ -92,9 +102,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               child: Row(
                 children: [
                   Text(
-                    selectedBank == null
-                        ? 'Todos los movimientos'
-                        : 'Movimientos · $selectedBank',
+                    selectedOperation != null
+                        ? '${selectedOperation.label}s'
+                        : (selectedBank == null
+                            ? 'Todos los movimientos'
+                            : 'Movimientos · $selectedBank'),
                     style: const TextStyle(
                       color: AppTheme.textPrimaryColor,
                       fontSize: 15,
@@ -118,12 +130,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ? _EmptyHistoryView(
                       hasFilters: selectedBank != null ||
                           selectedScope != null ||
+                          selectedOperation != null ||
                           searchQuery.isNotEmpty,
                       onClearFilters: () {
                         _searchController.clear();
                         ref
                             .read(historySearchQueryProvider.notifier)
                             .setQuery('');
+                        ref
+                            .read(historyOperationFilterProvider.notifier)
+                            .setOperation(null);
                         ref
                             .read(historyBankFilterProvider.notifier)
                             .setBank(null);
@@ -153,6 +169,54 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _OperationFilterBar extends StatelessWidget {
+  final FinancialOperationType? selectedOp;
+  final ValueChanged<FinancialOperationType?> onSelected;
+
+  const _OperationFilterBar({
+    required this.selectedOp,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 34,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          ChoiceChip(
+            key: const Key('op_filter_all'),
+            label: const Text('Todas'),
+            selected: selectedOp == null,
+            onSelected: (_) => onSelected(null),
+          ),
+          ...FinancialOperationType.values.map((op) {
+            final isSelected = selectedOp == op;
+            return Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: ChoiceChip(
+                key: Key('op_filter_${op.name}'),
+                avatar: Icon(
+                  op.icon,
+                  size: 14,
+                  color: isSelected
+                      ? AppTheme.primaryColor
+                      : AppTheme.textSecondaryColor,
+                ),
+                label: Text(op.label),
+                selected: isSelected,
+                onSelected: (_) => onSelected(isSelected ? null : op),
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -411,10 +475,63 @@ class HistoryTransactionCard extends StatelessWidget {
                   compact: true,
                 ),
                 TransferScopeBadge(scope: record.scope),
+                if (record.hadFee)
+                  _CostAlertBadge(
+                    icon: Icons.receipt_long_outlined,
+                    label:
+                        'Comisión: ${CurrencyFormatter.format(record.feeCharged, record.sourceCurrency)}',
+                    color: AppTheme.warningColor,
+                  ),
+                if (record.isCrossCurrency)
+                  _CostAlertBadge(
+                    icon: Icons.currency_exchange_rounded,
+                    label:
+                        'FX: ${record.sourceCurrency} → ${record.destinationCurrency}',
+                    color: AppTheme.infoColor,
+                  ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CostAlertBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _CostAlertBadge({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

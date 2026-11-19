@@ -123,6 +123,123 @@ void main() {
       );
       expect(sameAccount.isValid, isFalse);
     });
+
+    test('ignora una llave anterior si falta la cuenta propia de destino', () {
+      final quote = service.calculate(
+        scope: TransferScope.ownAccounts,
+        sourceAccount: activeBancolombia,
+        destinationKey: '3004567890',
+        amount: 20000,
+        feePolicy: const FeePolicy.zero(),
+      );
+
+      expect(quote.isValid, isFalse);
+      expect(quote.validationError, contains('cuenta destino propia'));
+    });
+
+    test('rechaza una cuenta de destino inactiva', () {
+      final quote = service.calculate(
+        scope: TransferScope.ownAccounts,
+        sourceAccount: activeBancolombia,
+        destinationOwnAccount: inactiveAccount,
+        amount: 20000,
+        feePolicy: const FeePolicy.zero(),
+      );
+
+      expect(quote.isValid, isFalse);
+      expect(quote.validationError, contains('destino está inactiva'));
+    });
+
+    test('rechaza monto menor o igual a cero', () {
+      final zeroQuote = service.calculate(
+        operationType: FinancialOperationType.transfer,
+        sourceAccount: activeBancolombia,
+        destinationAccountNumber: '**** 9845',
+        amount: 0,
+        feePolicy: const FeePolicy.zero(),
+      );
+      expect(zeroQuote.isValid, isFalse);
+      expect(zeroQuote.validationError, contains('mayor a cero'));
+
+      final negQuote = service.calculate(
+        operationType: FinancialOperationType.transfer,
+        sourceAccount: activeBancolombia,
+        destinationAccountNumber: '**** 9845',
+        amount: -50000,
+        feePolicy: const FeePolicy.zero(),
+      );
+      expect(negQuote.isValid, isFalse);
+    });
+
+    test('rechaza montos que superan el límite máximo por transacción (\$5M COP)', () {
+      final overLimitQuote = service.calculate(
+        operationType: FinancialOperationType.transfer,
+        sourceAccount: activeBancolombia,
+        destinationAccountNumber: '**** 9845',
+        amount: 5000001,
+        feePolicy: const FeePolicy.zero(),
+      );
+      expect(overLimitQuote.isValid, isFalse);
+      expect(overLimitQuote.validationError, contains('supera el límite'));
+    });
+
+    test('valida operación de depósito con comisión cero y tasa 1.0', () {
+      final depositQuote = service.calculate(
+        operationType: FinancialOperationType.deposit,
+        sourceAccount: activeBancolombia,
+        amount: 300000,
+        feePolicy: const FeePolicy.percentage(2.0), // Depósitos sin cobro
+      );
+      expect(depositQuote.isValid, isTrue);
+      expect(depositQuote.feeAmount, 0);
+      expect(depositQuote.finalAmountReceived, 300000);
+      expect(depositQuote.exchangeRate, 1.0);
+    });
+
+    test('valida retiro según saldo disponible', () {
+      final validWithdrawal = service.calculate(
+        operationType: FinancialOperationType.withdrawal,
+        sourceAccount: activeBancolombia,
+        amount: 500000,
+        feePolicy: const FeePolicy.zero(),
+      );
+      expect(validWithdrawal.isValid, isTrue);
+
+      final excessWithdrawal = service.calculate(
+        operationType: FinancialOperationType.withdrawal,
+        sourceAccount: activeBancolombia,
+        amount: 1500000,
+        feePolicy: const FeePolicy.zero(),
+      );
+      expect(excessWithdrawal.isValid, isFalse);
+      expect(excessWithdrawal.validationError, contains('Saldo insuficiente'));
+    });
+
+    test('aplica conversión multimoneda con tasas estáticas del Tenant (USD -> COP)', () {
+      const usdAccount = ManagedBankAccount(
+        bankName: 'Banco Andino',
+        title: 'Cuenta Principal',
+        accountNumber: '**** 4589',
+        currency: 'USD',
+        balance: 2000,
+        status: 'ACTIVA',
+        accentColor: AppTheme.secondaryColor,
+      );
+
+      final crossQuote = service.calculate(
+        operationType: FinancialOperationType.transfer,
+        sourceAccount: usdAccount,
+        destinationAccountNumber: '**** 8821',
+        destinationCurrency: 'COP',
+        amount: 100, // 100 USD
+        feePolicy: const FeePolicy.zero(),
+      );
+
+      expect(crossQuote.isValid, isTrue);
+      expect(crossQuote.isCrossCurrency, isTrue);
+      expect(crossQuote.exchangeRate, 4000.0);
+      expect(crossQuote.finalAmountReceived, 400000.0); // 100 * 4000
+    });
   });
 
   group('CurrencyFormatter', () {

@@ -22,6 +22,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
 
+  FinancialOperationType _operation = FinancialOperationType.transfer;
   TransferScope _scope = TransferScope.externalPerson;
   String? _selectedSourceNumber;
   String? _selectedDestOwnNumber;
@@ -93,7 +94,9 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   ) async {
     final picked = await AccountSelectorSheet.show(
       context,
-      title: 'Cuenta / Banco origen',
+      title: _operation == FinancialOperationType.deposit
+          ? 'Cuenta a abonar'
+          : 'Cuenta / Banco origen',
       accounts: accounts,
       selectedAccountNumber: currentSource.accountNumber,
     );
@@ -142,18 +145,30 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
     FocusScope.of(context).unfocus();
 
-    final destBank = _scope == TransferScope.ownAccounts && destOwnAccount != null
-        ? destOwnAccount.bankName
-        : (resolvedRecipient?.bankName ?? 'Entidad destino');
-    final destKey = _scope == TransferScope.ownAccounts && destOwnAccount != null
-        ? destOwnAccount.accountNumber
-        : (resolvedRecipient?.keyValue ?? _keyController.text.trim());
-    final destLabel =
-        _scope == TransferScope.ownAccounts && destOwnAccount != null
-            ? destOwnAccount.title
-            : (resolvedRecipient?.displayName ?? _keyController.text.trim());
+    final destBank = _operation == FinancialOperationType.deposit
+        ? 'Depósito Core'
+        : _operation == FinancialOperationType.withdrawal
+            ? 'Retiro Cajero'
+            : (_scope == TransferScope.ownAccounts && destOwnAccount != null
+                ? destOwnAccount.bankName
+                : (resolvedRecipient?.bankName ?? 'Entidad destino'));
 
-    final authorized = await TransferConfirmationSheet.show(
+    final destKey = _operation == FinancialOperationType.deposit ||
+            _operation == FinancialOperationType.withdrawal
+        ? sourceAccount.accountNumber
+        : (_scope == TransferScope.ownAccounts && destOwnAccount != null
+            ? destOwnAccount.accountNumber
+            : (resolvedRecipient?.keyValue ?? _keyController.text.trim()));
+
+    final destLabel = _operation == FinancialOperationType.deposit
+        ? 'Abono a cuenta'
+        : _operation == FinancialOperationType.withdrawal
+            ? 'Retiro en efectivo'
+            : (_scope == TransferScope.ownAccounts && destOwnAccount != null
+                ? destOwnAccount.title
+                : (resolvedRecipient?.displayName ?? _keyController.text.trim()));
+
+    final authorizedKey = await TransferConfirmationSheet.show(
       context,
       scope: _scope,
       sourceAccount: sourceAccount,
@@ -164,17 +179,21 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       description: _descriptionController.text,
     );
 
-    if (authorized != true || !mounted) return;
+    if (authorizedKey == null || !mounted) return;
 
-    ref.read(transactionsHistoryProvider.notifier).executeTransfer(
-          scope: _scope,
+    ref.read(transactionsHistoryProvider.notifier).executeOperation(
+          operationType: _operation,
           sourceAccount: sourceAccount,
-          destinationOwnAccount: destOwnAccount,
-          destinationKey: destKey,
-          destinationLabel: destLabel,
+          destinationOwnAccount: _operation == FinancialOperationType.transfer &&
+                  _scope == TransferScope.ownAccounts
+              ? destOwnAccount
+              : null,
+          destinationAccountNumber: destKey,
+          destinationHolderName: destLabel,
           destinationBankName: destBank,
           quote: quote,
           description: _descriptionController.text,
+          customIdempotencyKey: authorizedKey,
         );
 
     context.go('/transactions/summary');
@@ -184,6 +203,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   Widget build(BuildContext context) {
     final accounts = ref.watch(managedAccountsProvider);
     final recipients = ref.watch(quickRecipientsProvider);
+    final beneficiaries = ref.watch(tenantBeneficiariesProvider);
     final feePolicy = ref.watch(feePolicyProvider);
     final calculator = ref.watch(quoteCalculatorProvider);
 
@@ -199,26 +219,37 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     );
 
     final quote = calculator.calculate(
+      operationType: _operation,
       scope: _scope,
       sourceAccount: sourceAccount,
-      destinationOwnAccount: destOwnAccount,
-      destinationKey: _keyController.text,
+      destinationOwnAccount: _operation == FinancialOperationType.transfer &&
+              _scope == TransferScope.ownAccounts
+          ? destOwnAccount
+          : null,
+      destinationKey:
+          _scope == TransferScope.externalPerson ? _keyController.text : null,
       amount: parsedAmount,
       feePolicy: feePolicy,
     );
 
-    final destinationBankPreview =
-        _scope == TransferScope.ownAccounts && destOwnAccount != null
-            ? destOwnAccount.bankName
-            : resolvedRecipient?.bankName;
+    final destinationBankPreview = _operation == FinancialOperationType.deposit
+        ? 'Depósito Core'
+        : _operation == FinancialOperationType.withdrawal
+            ? 'Retiro Cajero'
+            : (_scope == TransferScope.ownAccounts && destOwnAccount != null
+                ? destOwnAccount.bankName
+                : resolvedRecipient?.bankName);
 
     final hasTypedAmount = _amountController.text.trim().isNotEmpty;
     final showInlineError = hasTypedAmount &&
         !quote.isValid &&
-        quote.validationError != null &&
-        (parsedAmount == null ||
-            parsedAmount <= 0 ||
-            quote.totalDebit > sourceAccount.balance);
+        quote.validationError != null;
+
+    final appTitle = switch (_operation) {
+      FinancialOperationType.transfer => 'Transferir Dinero',
+      FinancialOperationType.deposit => 'Depositar Dinero',
+      FinancialOperationType.withdrawal => 'Retirar Dinero',
+    };
 
     return Scaffold(
       appBar: AppBar(
@@ -233,7 +264,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
             }
           },
         ),
-        title: const Text('Transferir Dinero'),
+        title: Text(appTitle),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -241,16 +272,34 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _TransferScopeToggle(
-                selected: _scope,
-                onChanged: (nextScope) {
-                  setState(() => _scope = nextScope);
+              // Selector superior: Transferencia | Depósito | Retiro
+              _OperationTypeToggle(
+                selected: _operation,
+                onChanged: (op) {
+                  setState(() {
+                    _operation = op;
+                  });
                 },
               ),
-              const SizedBox(height: 20),
-              const _SectionHeader(
-                title: 'Desde (cuenta origen)',
-                subtitle: 'Elige el banco desde donde saldrá el dinero',
+              const SizedBox(height: 16),
+
+              if (_operation == FinancialOperationType.transfer) ...[
+                _TransferScopeToggle(
+                  selected: _scope,
+                  onChanged: (nextScope) {
+                    setState(() => _scope = nextScope);
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              _SectionHeader(
+                title: _operation == FinancialOperationType.deposit
+                    ? 'Cuenta destino (abono)'
+                    : 'Desde (cuenta origen)',
+                subtitle: _operation == FinancialOperationType.deposit
+                    ? 'Elige la cuenta donde se acreditará el dinero'
+                    : 'Elige la cuenta desde donde saldrá el dinero',
               ),
               const SizedBox(height: 10),
               _AccountSelectorCard(
@@ -258,95 +307,154 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 account: sourceAccount,
                 onTap: () => _pickSourceAccount(accounts, sourceAccount),
               ),
-              const SizedBox(height: 20),
-              if (_scope == TransferScope.externalPerson) ...[
-                const _SectionHeader(
-                  title: 'Hacia (destinatario)',
-                  subtitle: 'La llave identifica automáticamente el banco destino',
-                ),
+
+              if (!sourceAccount.isActive) ...[
                 const SizedBox(height: 10),
-                TextField(
-                  key: const Key('destination_key_field'),
-                  controller: _keyController,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    labelText: 'Llave',
-                    hintText: 'Llave Bre-B, celular, correo, documento o cuenta',
-                    prefixIcon: const Icon(Icons.key_rounded),
-                    suffixIcon: _keyController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 18),
-                            onPressed: () {
-                              setState(() => _keyController.clear());
-                            },
-                          )
-                        : null,
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.errorColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusInput),
+                    border: Border.all(
+                      color: AppTheme.errorColor.withValues(alpha: 0.4),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                _QuickRecipientsRow(
-                  recipients: recipients,
-                  selectedKey: _keyController.text.trim(),
-                  onSelect: (recipient) {
-                    setState(() {
-                      _keyController.text = recipient.keyValue;
-                    });
-                  },
-                ),
-                if (resolvedRecipient != null) ...[
-                  const SizedBox(height: 12),
-                  _ResolvedRecipientCard(recipient: resolvedRecipient),
-                ],
-              ] else ...[
-                const _SectionHeader(
-                  title: 'Hacia (otra cuenta propia)',
-                  subtitle: 'Mueve dinero entre tus cuentas de este banco',
-                ),
-                const SizedBox(height: 10),
-                if (destOwnAccount != null)
-                  _AccountSelectorCard(
-                    key: const Key('destination_own_account_card'),
-                    account: destOwnAccount,
-                    onTap: () => _pickDestinationOwnAccount(
-                      accounts,
-                      sourceAccount,
-                      destOwnAccount,
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceVariantColor,
-                      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-                      border: Border.all(
-                        color: AppTheme.warningColor.withValues(alpha: 0.5),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.block_rounded,
+                        color: AppTheme.errorColor,
+                        size: 20,
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.info_outline_rounded,
-                          color: AppTheme.warningColor,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'No tienes otra cuenta activa en ${sourceAccount.currency}. Selecciona una cuenta origen en COP para transferir entre tus bancos.',
-                            style: const TextStyle(
-                              color: AppTheme.textSecondaryColor,
-                              fontSize: 13,
-                            ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Cuenta INACTIVA. No es posible realizar operaciones hasta que sea activada por la entidad.',
+                          style: TextStyle(
+                            color: AppTheme.errorColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              if (_operation == FinancialOperationType.transfer) ...[
+                const SizedBox(height: 20),
+                if (_scope == TransferScope.externalPerson) ...[
+                  const _SectionHeader(
+                    title: 'Hacia (destinatario / cuenta)',
+                    subtitle:
+                        'Ingresa la cuenta o llave del destinatario',
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    key: const Key('destination_key_field'),
+                    controller: _keyController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: 'Cuenta o Llave',
+                      hintText:
+                          'Cuenta destinatario, celular, correo o llave',
+                      prefixIcon: const Icon(Icons.key_rounded),
+                      suffixIcon: _keyController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 18),
+                              onPressed: () {
+                                setState(() => _keyController.clear());
+                              },
+                            )
+                          : null,
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  _QuickRecipientsRow(
+                    recipients: recipients,
+                    selectedKey: _keyController.text.trim(),
+                    onSelect: (recipient) {
+                      setState(() {
+                        _keyController.text = recipient.keyValue;
+                      });
+                    },
+                  ),
+                  if (beneficiaries.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _BeneficiariesChipsRow(
+                      beneficiaries: beneficiaries,
+                      selectedKey: _keyController.text.trim(),
+                      onSelect: (ben) {
+                        setState(() {
+                          _keyController.text = ben.accountNumber;
+                        });
+                      },
+                    ),
+                  ],
+                  if (resolvedRecipient != null) ...[
+                    const SizedBox(height: 12),
+                    _ResolvedRecipientCard(recipient: resolvedRecipient),
+                  ],
+                ] else ...[
+                  const _SectionHeader(
+                    title: 'Hacia (otra cuenta propia)',
+                    subtitle:
+                         'Mueve dinero entre tus cuentas de este banco',
+                  ),
+                  const SizedBox(height: 10),
+                  if (destOwnAccount != null)
+                    _AccountSelectorCard(
+                      key: const Key('destination_own_account_card'),
+                      account: destOwnAccount,
+                      onTap: () => _pickDestinationOwnAccount(
+                        accounts,
+                        sourceAccount,
+                        destOwnAccount,
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceVariantColor,
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.radiusCard),
+                        border: Border.all(
+                          color: AppTheme.warningColor.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline_rounded,
+                            color: AppTheme.warningColor,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'No tienes otra cuenta activa en ${sourceAccount.currency}. Selecciona una cuenta en COP para transferir entre tus cuentas.',
+                              style: const TextStyle(
+                                color: AppTheme.textSecondaryColor,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ],
+
               const SizedBox(height: 20),
-              const _SectionHeader(
-                title: 'Monto a enviar',
-                subtitle: 'Operación en la moneda de tu cuenta origen',
+              _SectionHeader(
+                title: switch (_operation) {
+                  FinancialOperationType.transfer => 'Monto a enviar',
+                  FinancialOperationType.deposit => 'Monto a depositar',
+                  FinancialOperationType.withdrawal => 'Monto a retirar',
+                },
+                subtitle:
+                    'Límite máx. ${CurrencyFormatter.format(TenantLimits.maxLimitFor(sourceAccount.currency), sourceAccount.currency)}',
               ),
               const SizedBox(height: 10),
               TextField(
@@ -355,8 +463,13 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
+                // Formateador estricto de seguridad: bloquea signos negativos (-) y letras
                 inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                  sourceAccount.currency.toUpperCase() == 'COP'
+                      ? FilteringTextInputFormatter.digitsOnly
+                      : FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d+\.?\d{0,2}'),
+                        ),
                 ],
                 onChanged: (_) => setState(() {}),
                 style: const TextStyle(
@@ -367,7 +480,9 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 ),
                 decoration: InputDecoration(
                   labelText: 'Monto',
-                  hintText: sourceAccount.currency == 'COP' ? '50.000' : '100.00',
+                  hintText: sourceAccount.currency == 'COP'
+                      ? '50000'
+                      : '100.00',
                   prefixIcon: const Icon(Icons.payments_outlined),
                   suffixText: sourceAccount.currency,
                   suffixStyle: const TextStyle(
@@ -402,7 +517,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 maxLength: 80,
                 decoration: const InputDecoration(
                   labelText: 'Descripción (opcional)',
-                  hintText: 'Ej. Almuerzo, ahorro mensual, arriendo',
+                  hintText: 'Ej. Almuerzo, ahorro mensual, depósito nómina',
                   prefixIcon: Icon(Icons.notes_rounded),
                   counterText: '',
                 ),
@@ -467,6 +582,76 @@ class _SectionHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _OperationTypeToggle extends StatelessWidget {
+  final FinancialOperationType selected;
+  final ValueChanged<FinancialOperationType> onChanged;
+
+  const _OperationTypeToggle({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(AppTheme.radiusInput),
+        border: Border.all(color: AppTheme.outlineColor),
+      ),
+      child: Row(
+        children: FinancialOperationType.values.map((op) {
+          final isSelected = op == selected;
+          return Expanded(
+            child: InkWell(
+              key: Key('op_tab_${op.name}'),
+              onTap: () => onChanged(op),
+              borderRadius: BorderRadius.circular(9),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      op.icon,
+                      size: 16,
+                      color: isSelected
+                          ? AppTheme.onPrimaryColor
+                          : AppTheme.textSecondaryColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        op.label,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isSelected
+                              ? AppTheme.onPrimaryColor
+                              : AppTheme.textSecondaryColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 }
@@ -683,6 +868,46 @@ class _QuickRecipientsRow extends StatelessWidget {
             label: Text('${recipient.name} · ${recipient.bankName}'),
             selected: isSelected,
             onSelected: (_) => onSelect(recipient),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _BeneficiariesChipsRow extends StatelessWidget {
+  final List<BeneficiaryAccount> beneficiaries;
+  final String selectedKey;
+  final ValueChanged<BeneficiaryAccount> onSelect;
+
+  const _BeneficiariesChipsRow({
+    required this.beneficiaries,
+    required this.selectedKey,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: beneficiaries.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final ben = beneficiaries[index];
+          final isSelected = ben.accountNumber == selectedKey;
+          return ChoiceChip(
+            avatar: Icon(
+              Icons.account_box_outlined,
+              size: 16,
+              color: isSelected
+                  ? AppTheme.primaryColor
+                  : AppTheme.textSecondaryColor,
+            ),
+            label: Text('${ben.name} (${ben.accountNumber} · ${ben.currency})'),
+            selected: isSelected,
+            onSelected: (_) => onSelect(ben),
           );
         },
       ),

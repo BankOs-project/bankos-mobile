@@ -1,5 +1,7 @@
 import 'package:bankos_mobile/core/theme/app_theme.dart';
 import 'package:bankos_mobile/features/history/presentation/screens/history_screen.dart';
+import 'package:bankos_mobile/features/transactions/domain/models/transaction_models.dart';
+import 'package:bankos_mobile/features/transactions/presentation/providers/transactions_providers.dart';
 import 'package:bankos_mobile/features/transactions/presentation/screens/summary_screen.dart';
 import 'package:bankos_mobile/features/transactions/presentation/screens/transfer_screen.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +45,42 @@ Widget _buildTestApp({String initialLocation = '/transactions/transfer'}) {
 }
 
 void main() {
+  test('las transferencias recibidas no aparecen como depósitos', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final history = container.read(transactionsHistoryProvider);
+    final incoming = history.where(
+      (record) => record.direction == MovementDirection.incoming,
+    );
+    expect(incoming, hasLength(2));
+    expect(
+      incoming.map((record) => record.operationType),
+      everyElement(FinancialOperationType.transfer),
+    );
+
+    container
+        .read(historyOperationFilterProvider.notifier)
+        .setOperation(FinancialOperationType.deposit);
+    expect(container.read(filteredTransactionsProvider), isEmpty);
+  });
+
+  test('el filtro por banco considera ambos lados del movimiento', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    container.read(historyBankFilterProvider.notifier).setBank('Nequi');
+    expect(
+      container.read(filteredTransactionsProvider).map((record) => record.id),
+      ['txn-1005'],
+    );
+
+    container.read(historyBankFilterProvider.notifier).setBank('Davivienda');
+    final incoming = container.read(filteredTransactionsProvider).single;
+    expect(incoming.id, 'txn-1004');
+    expect(incoming.tenantName, 'BankOs');
+  });
+
   testWidgets(
     'flujo completo: transferencia con PIN erróneo, huella visual, PIN 1234, comprobante e historial',
     (tester) async {
@@ -164,6 +202,105 @@ void main() {
       expect(find.text('Transferencia exitosa'), findsOneWidget);
       expect(find.text('Entre mis cuentas'), findsWidgets);
       expect(find.text('\$100.000 COP'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'flujo de depósito: abona saldo a cuenta seleccionada y emite comprobante de depósito',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_buildTestApp());
+      await tester.pumpAndSettle();
+
+      // Cambiar operación a Depósito.
+      await tester.tap(find.byKey(const Key('op_tab_deposit')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Depositar Dinero'), findsOneWidget);
+      expect(find.text('Cuenta destino (abono)'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('amount_field')), '150000');
+      await tester.pumpAndSettle();
+
+      final reviewBtn = find.byKey(const Key('review_transfer_button'));
+      await tester.ensureVisible(reviewBtn);
+      await tester.tap(reviewBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Resumen de Depósito'), findsOneWidget);
+
+      for (final digit in ['1', '2', '3', '4']) {
+        await tester.tap(find.byKey(Key('pin_key_$digit')));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('Depósito exitoso'), findsOneWidget);
+      expect(find.text('\$150.000 COP'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'la simulación del 504 conserva la llave hasta confirmar la operación local',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_buildTestApp());
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(TransferScreen)),
+      );
+      final initialCount = container.read(transactionsHistoryProvider).length;
+
+      await tester.enterText(
+        find.byKey(const Key('destination_key_field')),
+        '3001234567',
+      );
+      await tester.enterText(find.byKey(const Key('amount_field')), '30000');
+      await tester.pumpAndSettle();
+
+      final reviewBtn = find.byKey(const Key('review_transfer_button'));
+      await tester.ensureVisible(reviewBtn);
+      await tester.tap(reviewBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Simulación de reintento'), findsOneWidget);
+      final referenceFinder = find.textContaining('Demostración local · Llave: ');
+      final reference = tester.widget<Text>(referenceFinder).data!;
+      final demoKey = reference.split('Llave: ').last;
+
+      await tester.tap(find.text('Simular fallo de red'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Error 504 simulado'), findsOneWidget);
+      expect(find.text(reference), findsOneWidget);
+      for (final digit in ['1', '2', '3', '4']) {
+        await tester.tap(find.byKey(Key('pin_key_$digit')));
+      }
+      await tester.pumpAndSettle();
+      expect(container.read(transactionsHistoryProvider), hasLength(initialCount));
+
+      await tester.tap(find.text('Simular reintento con la misma llave'));
+      await tester.pumpAndSettle();
+      expect(find.text(reference), findsOneWidget);
+
+      // Completar PIN
+      for (final digit in ['1', '2', '3', '4']) {
+        await tester.tap(find.byKey(Key('pin_key_$digit')));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('Transferencia exitosa'), findsOneWidget);
+      final records = container.read(transactionsHistoryProvider);
+      expect(records, hasLength(initialCount + 1));
+      expect(records.first.idempotencyKey, demoKey);
     },
   );
 }
