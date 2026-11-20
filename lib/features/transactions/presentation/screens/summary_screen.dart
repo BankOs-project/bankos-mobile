@@ -8,7 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/app_theme.dart';
-import '../../../accounts/presentation/providers/accounts_mock_provider.dart';
+import '../../../accounts/presentation/providers/bottom_nav_provider.dart';
 import '../../domain/models/transaction_models.dart';
 import '../providers/transactions_providers.dart';
 import '../widgets/receipt_ticket_card.dart';
@@ -24,7 +24,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
   final GlobalKey _receiptBoundaryKey = GlobalKey();
   bool _isSharing = false;
 
-  Future<void> _shareReceipt(TransactionRecord record) async {
+  Future<void> _shareReceipt(OperationReceipt record) async {
     if (_isSharing) return;
     setState(() => _isSharing = true);
 
@@ -36,21 +36,18 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
         final file = XFile.fromData(
           pngBytes,
           mimeType: 'image/png',
-          name: 'comprobante_${record.referenceCode}.png',
+          name: 'comprobante_${record.id}.png',
         );
         await SharePlus.instance.share(
           ShareParams(
             files: [file],
             text: text,
-            subject: 'Comprobante BankOs · ${record.referenceCode}',
+            subject: 'Comprobante BankOs · ${record.id}',
           ),
         );
       } else {
         await SharePlus.instance.share(
-          ShareParams(
-            text: text,
-            subject: 'Comprobante BankOs · ${record.referenceCode}',
-          ),
+          ShareParams(text: text, subject: 'Comprobante BankOs · ${record.id}'),
         );
       }
     } catch (_) {
@@ -58,9 +55,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
       await Clipboard.setData(ClipboardData(text: record.toShareableText()));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Comprobante copiado al portapapeles.'),
-          ),
+          const SnackBar(content: Text('Comprobante copiado al portapapeles.')),
         );
       }
     } finally {
@@ -78,7 +73,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
     return byteData?.buffer.asUint8List();
   }
 
-  Future<void> _copyReceiptText(TransactionRecord record) async {
+  Future<void> _copyReceiptText(OperationReceipt record) async {
     await Clipboard.setData(ClipboardData(text: record.toShareableText()));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -133,8 +128,9 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                     const SizedBox(height: 20),
                     ElevatedButton.icon(
                       key: const Key('share_receipt_button'),
-                      onPressed:
-                          _isSharing ? null : () => _shareReceipt(record),
+                      onPressed: _isSharing
+                          ? null
+                          : () => _shareReceipt(record),
                       icon: _isSharing
                           ? const SizedBox(
                               width: 18,
@@ -185,7 +181,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                     TextButton.icon(
                       onPressed: () => context.go('/transactions/transfer'),
                       icon: const Icon(Icons.send_rounded, size: 18),
-                      label: const Text('Realizar otra transferencia'),
+                      label: const Text('Realizar otra operación'),
                     ),
                   ],
                 ),
@@ -224,7 +220,7 @@ class _EmptyReceiptState extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Cuando realices una transferencia, podrás consultar y compartir su comprobante aquí.',
+              'Cuando el servidor confirme una operación, podrás consultar su comprobante aquí.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: AppTheme.textSecondaryColor,
@@ -234,7 +230,7 @@ class _EmptyReceiptState extends StatelessWidget {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: onNewTransfer,
-              child: const Text('Hacer una transferencia'),
+              child: const Text('Realizar una operación'),
             ),
           ],
         ),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../domain/models/session_account.dart';
+import '../widgets/session_accounts_content.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -21,29 +23,20 @@ class AccountsScreen extends ConsumerWidget {
               Text(session.bankLabel, style: theme.textTheme.headlineSmall),
               const SizedBox(height: 8),
             ],
-            Text(
-              'Catálogo de demostración',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+            Text('Tus cuentas', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 20),
-            const _ProductCard(
-              icon: Icons.savings_outlined,
-              title: 'Ahorros',
-              description: 'Cuentas para guardar y administrar tu dinero.',
-            ),
-            const SizedBox(height: 12),
-            const _ProductCard(
-              icon: Icons.request_quote_outlined,
-              title: 'Créditos',
-              description: 'Opciones de financiación y préstamos.',
-            ),
-            const SizedBox(height: 12),
-            const _ProductCard(
-              icon: Icons.credit_card_rounded,
-              title: 'Tarjetas',
-              description: 'Tarjetas de débito y crédito para tus compras.',
+            SessionAccountsContent(
+              builder: (accounts) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                spacing: 12,
+                children: [
+                  for (final account in accounts)
+                    _AccountCard(
+                      key: ValueKey(account.accountNumber),
+                      account: account,
+                    ),
+                ],
+              ),
             ),
           ],
         ),
@@ -52,31 +45,41 @@ class AccountsScreen extends ConsumerWidget {
   }
 }
 
-class _ProductCard extends StatelessWidget {
-  const _ProductCard({
-    required this.icon,
-    required this.title,
-    required this.description,
-  });
+class _AccountCard extends StatelessWidget {
+  const _AccountCard({super.key, required this.account});
 
-  final IconData icon;
-  final String title;
-  final String description;
+  final SessionAccount account;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final statusColor = switch (account.status) {
+      AccountStatus.active => colors.primary,
+      AccountStatus.inactive => colors.onSurfaceVariant,
+      AccountStatus.blocked => colors.error,
+    };
 
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
-          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.14),
-          foregroundColor: theme.colorScheme.primary,
-          child: Icon(icon),
+          backgroundColor: colors.primary.withValues(alpha: 0.14),
+          foregroundColor: colors.primary,
+          child: const Icon(Icons.account_balance_wallet_outlined),
         ),
-        title: Text(title, style: theme.textTheme.titleMedium),
-        subtitle: Text(description),
+        title: Text(
+          formatAccountBalance(account.balanceUnits, account.currency),
+          style: theme.textTheme.titleMedium,
+        ),
+        subtitle: Wrap(
+          spacing: 10,
+          runSpacing: 4,
+          children: [
+            Text(account.maskedNumber),
+            Text(account.status.label, style: TextStyle(color: statusColor)),
+          ],
+        ),
       ),
     );
   }

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
-import '../providers/accounts_mock_provider.dart';
+import '../providers/bottom_nav_provider.dart';
 
 /// Barra de accesos directos rápidos para operaciones frecuentes en BankOs.
 class DashboardQuickActions extends ConsumerWidget {
@@ -51,10 +51,7 @@ class DashboardQuickActions extends ConsumerWidget {
               icon: Icons.add_circle_outline_rounded,
               label: 'Depósito',
               color: AppTheme.infoColor,
-              onTap: () {
-                ref.read(bottomNavIndexProvider.notifier).state = 2;
-                context.go('/operations');
-              },
+              onTap: () => context.go('/transactions/transfer?type=deposit'),
             ),
             _QuickActionItem(
               key: const Key('quick_action_history'),
