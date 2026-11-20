@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/providers/auth_provider.dart';
+import '../../features/auth/presentation/providers/startup_intro_provider.dart';
 import '../../features/auth/domain/models/public_bank.dart';
 import '../../features/auth/presentation/screens/bank_selector_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
@@ -19,12 +20,13 @@ import '../../features/transactions/presentation/screens/summary_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
-    initialLocation: '/banks',
+    initialLocation: '/session',
     redirect: (context, state) {
       final auth = ref.read(authProvider);
       final location = state.matchedLocation;
       final isBankEntry = location == '/login' || location == '/register';
-      if (auth.startup != SessionStartup.ready) {
+      if (!ref.read(startupIntroProvider) ||
+          auth.startup != SessionStartup.ready) {
         return location == '/session' ? null : '/session';
       }
       if (location == '/session') {
@@ -105,6 +107,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     authProvider.select((state) => (state.startup, state.isAuthenticated)),
     (_, _) => router.refresh(),
   );
+  ref.listen(startupIntroProvider, (_, _) => router.refresh());
   ref.onDispose(router.dispose);
   return router;
 });

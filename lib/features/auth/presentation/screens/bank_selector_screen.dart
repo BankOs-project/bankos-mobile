@@ -146,9 +146,12 @@ class _BankLogo extends StatelessWidget {
           : ClipOval(
               child: Image.network(
                 url.toString(),
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
+                width: 32,
+                height: 32,
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+                frameBuilder: (_, child, frame, _) =>
+                    frame == null ? fallback : child,
                 errorBuilder: (_, _, _) => fallback,
               ),
             ),
