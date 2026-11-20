@@ -146,6 +146,7 @@ class AuthNotifier extends Notifier<AuthState> {
             LoginRequest(
               bankId: bank.id,
               bankName: bank.name,
+              bankLogoUrl: bank.logoUrl,
               email: email,
               password: password,
             ),

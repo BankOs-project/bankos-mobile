@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/session_account.dart';
@@ -62,6 +63,10 @@ class _AccountCard extends StatelessWidget {
 
     return Card(
       child: ListTile(
+        onTap: () => context.push(
+          '/accounts/${Uri.encodeComponent(account.accountNumber)}',
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: colors.primary.withValues(alpha: 0.14),

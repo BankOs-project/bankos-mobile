@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../domain/models/auth_models.dart';
+import '../../domain/models/public_bank.dart';
 
 abstract interface class SessionStore {
   Future<AuthSession?> read();
@@ -29,6 +30,8 @@ class SecureSessionStore implements SessionStore {
             (json['bank_name'] as String?) ??
             _legacyBankLabel(json['tenant_slug'] as String),
         email: json['email'] as String,
+        bankLogoUrl: parseBankLogoUrl(json['bank_logo_url']),
+        bankId: json['bank_id'] as String?,
         expiresAt: DateTime.parse(json['expires_at'] as String),
       );
     } catch (_) {
@@ -45,6 +48,8 @@ class SecureSessionStore implements SessionStore {
       'user_id': session.userId,
       'tenant_id': session.tenantId,
       'bank_name': session.bankLabel,
+      'bank_logo_url': session.bankLogoUrl?.toString(),
+      'bank_id': session.bankId,
       'email': session.email,
       'role': session.role,
       'expires_at': session.expiresAt.toUtc().toIso8601String(),

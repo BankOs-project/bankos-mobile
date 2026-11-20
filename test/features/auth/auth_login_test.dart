@@ -6,7 +6,9 @@ import 'dart:ui' as ui;
 import 'package:bankos_mobile/core/network/dio_provider.dart';
 import 'package:bankos_mobile/core/router/app_router.dart';
 import 'package:bankos_mobile/core/theme/app_theme.dart';
+import 'package:bankos_mobile/core/theme/bank_theme.dart';
 import 'package:bankos_mobile/features/accounts/presentation/providers/session_accounts_provider.dart';
+import 'package:bankos_mobile/features/accounts/presentation/providers/dashboard_finances_provider.dart';
 import 'package:bankos_mobile/features/auth/data/repositories/auth_repository.dart';
 import 'package:bankos_mobile/features/auth/data/repositories/session_store.dart';
 import 'package:bankos_mobile/features/auth/domain/models/auth_models.dart';
@@ -15,6 +17,10 @@ import 'package:bankos_mobile/features/auth/presentation/providers/auth_provider
 import 'package:bankos_mobile/features/auth/presentation/screens/bank_selector_screen.dart';
 import 'package:bankos_mobile/features/auth/presentation/screens/login_screen.dart';
 import 'package:bankos_mobile/features/auth/presentation/screens/session_startup_screen.dart';
+import 'package:bankos_mobile/features/auth/presentation/widgets/bank_logo.dart';
+import 'package:bankos_mobile/features/operations/presentation/screens/operations_screen.dart';
+import 'package:bankos_mobile/features/settings/presentation/screens/dashboard_menu_screen.dart';
+import 'package:bankos_mobile/features/settings/presentation/screens/general_settings_screen.dart';
 import 'package:bankos_mobile/main.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -62,24 +68,31 @@ ResponseBody _jsonBody(Map<String, dynamic> payload, int statusCode) {
   );
 }
 
-ResponseBody _bankDirectory() => _jsonBody({
-  'success': true,
-  'data': [
-    for (final bank in [_andinoBank, _caribeBank])
-      {'bank_id': bank.id, 'name': bank.name, 'logo_url': null},
-  ],
-}, 200);
+ResponseBody _bankDirectory({String? andinoLogo, String? caribeLogo}) =>
+    _jsonBody({
+      'success': true,
+      'data': [
+        for (final bank in [_andinoBank, _caribeBank])
+          {
+            'bank_id': bank.id,
+            'name': bank.name,
+            'logo_url': bank == _andinoBank ? andinoLogo : caribeLogo,
+          },
+      ],
+    }, 200);
 
-AuthSession _savedSession({required DateTime expiresAt}) => AuthSession(
-  accessToken: 'stored-token',
-  tokenType: 'bearer',
-  expiresAt: expiresAt,
-  userId: 'user-andino',
-  tenantId: 'tenant-andino',
-  role: 'cliente',
-  bankLabel: 'Banco Andino',
-  email: 'juan@banco-andino.com',
-);
+AuthSession _savedSession({required DateTime expiresAt, Uri? bankLogoUrl}) =>
+    AuthSession(
+      accessToken: 'stored-token',
+      tokenType: 'bearer',
+      expiresAt: expiresAt,
+      userId: 'user-andino',
+      tenantId: 'tenant-andino',
+      role: 'cliente',
+      bankLabel: 'Banco Andino',
+      bankLogoUrl: bankLogoUrl,
+      email: 'juan@banco-andino.com',
+    );
 
 ResponseBody _activeProfile({String tenant = 'tenant-andino'}) => _jsonBody({
   'success': true,
@@ -97,6 +110,20 @@ ResponseBody _emptyAccounts() => _jsonBody({
   'data': {'items': [], 'total': 0},
 }, 200);
 
+ResponseBody _summary(
+  RequestOptions options, [
+  List<Map<String, String>> totals = const [],
+]) => _jsonBody({
+  'success': true,
+  'internal_code': 'FINANCIAL_SUMMARY_FETCHED',
+  'data': {
+    'account_number': options.queryParameters['account_number'],
+    'start_date': options.queryParameters['start_date'],
+    'end_date': options.queryParameters['end_date'],
+    'currencies': totals,
+  },
+}, 200);
+
 ProviderContainer _restoringContainer(
   SessionStore store,
   _MockHandler handler,
@@ -105,8 +132,11 @@ ProviderContainer _restoringContainer(
     overrides: [sessionStoreProvider.overrideWithValue(store)],
   );
   container.read(dioProvider).httpClientAdapter = _FakeHttpClientAdapter(
-    (request) async =>
-        request.path == '/banks' ? _bankDirectory() : handler(request),
+    (request) async => switch (request.path) {
+      '/banks' => _bankDirectory(),
+      '/transactions/summary' => _summary(request),
+      _ => handler(request),
+    },
   );
   return container;
 }
@@ -140,6 +170,19 @@ Future<void> _tapText(WidgetTester tester, String label) async {
   final target = find.text(label);
   await tester.ensureVisible(target);
   await tester.tap(target);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _openDashboardMenu(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Abrir menú'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 350));
+  expect(find.byType(DashboardMenuScreen), findsOneWidget);
+}
+
+Future<void> _logoutFromMenu(WidgetTester tester) async {
+  await _openDashboardMenu(tester);
+  await tester.tap(find.text('Cerrar sesión'));
   await tester.pumpAndSettle();
 }
 
@@ -487,6 +530,93 @@ void main() {
     const store = SecureSessionStore(FlutterSecureStorage());
     setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
+    testWidgets('el menú usa BankOS y guarda el tema al reabrir la app', (
+      tester,
+    ) async {
+      await store.save(
+        _savedSession(expiresAt: DateTime.now().add(const Duration(hours: 1))),
+      );
+      final container = _restoringContainer(
+        store,
+        (options) async =>
+            options.path == '/auth/me' ? _activeProfile() : _emptyAccounts(),
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(_restoringApp(container));
+      await tester.pumpAndSettle();
+      final dashboard = find.text('¡Hola, Juan Pérez!');
+      ThemeData themeAt(Finder finder) => Theme.of(tester.element(finder));
+      expect(
+        themeAt(dashboard).colorScheme.primary,
+        BankPalette.andino.darkAccent,
+      );
+      await _openDashboardMenu(tester);
+      final menu = find.byType(DashboardMenuScreen);
+      final logout = tester.widget<Text>(find.text('Cerrar sesión'));
+      expect(logout.style?.fontWeight, FontWeight.bold);
+      expect(logout.style?.decoration, TextDecoration.underline);
+      expect(find.byIcon(Icons.power_settings_new_rounded), findsOneWidget);
+      expect(
+        themeAt(menu).colorScheme.primary,
+        AppTheme.darkTheme.colorScheme.primary,
+      );
+      for (final option in ['Perfil', 'Documentos y certificados', 'Ayuda']) {
+        await _tapText(tester, option);
+        final toast = find.byType(SnackBar);
+        expect(find.text('Funcionalidad aún no disponible'), findsOneWidget);
+        expect(
+          tester.widget<SnackBar>(toast).behavior,
+          SnackBarBehavior.floating,
+        );
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.byTooltip('Volver al Dashboard'));
+      await tester.pumpAndSettle();
+      expect(dashboard, findsOneWidget);
+
+      await _openDashboardMenu(tester);
+      await _tapText(tester, 'Configuración general');
+      final settings = find.byType(GeneralSettingsScreen);
+      expect(themeAt(settings).brightness, Brightness.dark);
+      await _tapText(tester, 'Claro');
+      expect(themeAt(settings).brightness, Brightness.light);
+      expect(
+        themeAt(settings).colorScheme.primary,
+        AppTheme.lightTheme.colorScheme.primary,
+      );
+      await _tapText(tester, 'Oscuro');
+      expect(themeAt(settings).brightness, Brightness.dark);
+      await _tapText(tester, 'Claro');
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(
+        themeAt(menu).colorScheme.primary,
+        AppTheme.lightTheme.colorScheme.primary,
+      );
+      await tester.tap(find.byTooltip('Volver al Dashboard'));
+      await tester.pumpAndSettle();
+      expect(
+        themeAt(dashboard).colorScheme.primary,
+        BankPalette.andino.lightAccent,
+      );
+
+      await _logoutFromMenu(tester);
+      expect(await store.read(), isNull);
+      expect(themeAt(find.text('Elige tu banco')).brightness, Brightness.light);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+
+      final reopened = _restoringContainer(store, (options) async {
+        fail('No se esperaba una solicitud a ${options.path}');
+      });
+      addTearDown(reopened.dispose);
+      await tester.pumpWidget(_restoringApp(reopened));
+      await tester.pumpAndSettle();
+      expect(themeAt(find.text('Elige tu banco')).brightness, Brightness.light);
+    });
+
     testWidgets('sin sesión anima una vez y luego abre el selector', (
       tester,
     ) async {
@@ -553,8 +683,12 @@ void main() {
     testWidgets('una sesión válida espera el final de la intro', (
       tester,
     ) async {
+      final logo = Uri.parse('https://logos.example.com/restored-andino.png');
       await store.save(
-        _savedSession(expiresAt: DateTime.now().add(const Duration(hours: 1))),
+        _savedSession(
+          expiresAt: DateTime.now().add(const Duration(hours: 1)),
+          bankLogoUrl: logo,
+        ),
       );
       final paths = <String>[];
       final container = _restoringContainer(store, (options) async {
@@ -572,9 +706,9 @@ void main() {
       expect(find.text('¡Hola, Juan Pérez!'), findsNothing);
       await tester.pumpAndSettle();
       expect(find.text('¡Hola, Juan Pérez!'), findsOneWidget);
+      expect(tester.widget<BankLogo>(find.byType(BankLogo)).logoUrl, logo);
       expect(paths, ['/auth/me', '/accounts']);
-      await tester.tap(find.byTooltip('Cerrar sesión'));
-      await tester.pumpAndSettle();
+      await _logoutFromMenu(tester);
       expect(find.byType(SessionStartupScreen), findsNothing);
       expect(find.byType(BankSelectorScreen), findsOneWidget);
     });
@@ -740,8 +874,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('¡Hola, Juan Pérez!'), findsOneWidget);
 
-        await tester.tap(find.byTooltip('Cerrar sesión'));
-        await tester.pumpAndSettle();
+        await _logoutFromMenu(tester);
         expect(find.byType(SessionStartupScreen), findsNothing);
         expect(find.byType(BankSelectorScreen), findsOneWidget);
         expect(await store.read(), isNull);
@@ -981,8 +1114,13 @@ void main() {
       );
       addTearDown(container.dispose);
 
+      // Las respuestas pendientes las controla el doble de transporte.
+      container.read(dioProvider).options.receiveTimeout = Duration.zero;
       final profileTokens = <String>[];
       final accountsTokens = <String>[];
+      final caribeFilters = <Object?>[];
+      const andinoLogo = 'https://logos.example.com/andino.png';
+      const caribeLogo = 'https://logos.example.com/caribe.png';
       final lateAndino = Completer<ResponseBody>();
       final caribeRetry = Completer<ResponseBody>();
       CancelToken? pendingAndinoToken;
@@ -1017,7 +1155,9 @@ void main() {
       container.read(dioProvider).httpClientAdapter = _FakeHttpClientAdapter((
         options,
       ) async {
-        if (options.path == '/banks') return _bankDirectory();
+        if (options.path == '/banks') {
+          return _bankDirectory(andinoLogo: andinoLogo, caribeLogo: caribeLogo);
+        }
         if (options.path == '/auth/login') {
           final body = options.data as Map<String, dynamic>;
           final bankId = body['bank_id'];
@@ -1037,6 +1177,28 @@ void main() {
         }
 
         final token = options.headers['Authorization'] as String;
+        if (options.path == '/transactions/summary') {
+          if (token == 'Bearer token-banco-andino') {
+            return _summary(options, const [
+              {
+                'currency': 'COP',
+                'available_balance': '1500.25',
+                'income': '10',
+                'expenses': '1',
+              },
+            ]);
+          }
+          expect(token, 'Bearer token-cooperativa-caribe');
+          caribeFilters.add(options.queryParameters['account_number']);
+          return _summary(options, const [
+            {
+              'currency': 'EUR',
+              'available_balance': '9.75',
+              'income': '2',
+              'expenses': '1',
+            },
+          ]);
+        }
         if (options.path == '/accounts') {
           accountsTokens.add(token);
           if (token == 'Bearer token-banco-andino') {
@@ -1108,17 +1270,36 @@ void main() {
       }
 
       await login(_andinoBank, 'juan@banco-andino.com');
+      Color activeAccent() =>
+          Theme.of(tester.element(find.byType(BottomNavigationBar)))
+              .colorScheme
+              .primary;
+      expect(activeAccent(), BankPalette.andino.darkAccent);
       expect(find.text(_andinoBank.name), findsOneWidget);
       expect(find.text('¡Hola, Juan Pérez Gómez!'), findsOneWidget);
+      expect(
+        tester.widget<BankLogo>(find.byType(BankLogo)).logoUrl.toString(),
+        andinoLogo,
+      );
       expect(container.read(authTokenProvider), 'token-banco-andino');
       expect((await store.read())?.bankLabel, _andinoBank.name);
-      expect(find.text(r'$1.600 COP'), findsOneWidget);
-      expect(find.text(r'$120.50 USD'), findsOneWidget);
-      expect(find.text('Pendientes de datos del historial.'), findsOneWidget);
-      expect(find.text('Gráficos pendientes'), findsOneWidget);
+      expect((await store.read())?.bankLogoUrl.toString(), andinoLogo);
+      expect(find.text(r'$1.500,25 COP'), findsOneWidget);
+      expect(find.text('Finanzas'), findsOneWidget);
+      expect(find.text('Saldo actual'), findsOneWidget);
+
+      await _openDashboardMenu(tester);
+      await _tapText(tester, 'Configuración general');
+      await _tapText(tester, 'Claro');
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Volver al Dashboard'));
+      await tester.pumpAndSettle();
+      expect(activeAccent(), BankPalette.andino.lightAccent);
 
       await tester.tap(find.byKey(const Key('quick_action_accounts')));
       await tester.pumpAndSettle();
+      expect(activeAccent(), BankPalette.andino.lightAccent);
       expect(find.text(_andinoBank.name), findsOneWidget);
       expect(find.text(r'$1.500,25 COP'), findsOneWidget);
       expect(find.text(r'$99,75 COP'), findsOneWidget);
@@ -1131,22 +1312,30 @@ void main() {
 
       await tester.tap(find.text('Dashboard'));
       await tester.pumpAndSettle();
+      container
+          .read(dashboardFinanceFiltersProvider.notifier)
+          .selectAccount('1234564589');
+      await tester.pumpAndSettle();
       final firstSession = container.read(activeSessionProvider)!;
       delayAndino = true;
       container.invalidate(sessionAccountsProvider(firstSession));
       await tester.pump();
       await tester.pump();
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.text(r'$1.600 COP'), findsNothing);
-      await tester.tap(find.byTooltip('Cerrar sesión'));
-      await tester.pumpAndSettle();
+      expect(find.text(r'$1.500,25 COP'), findsOneWidget);
+      await _logoutFromMenu(tester);
       expect(find.byType(BankSelectorScreen), findsOneWidget);
       expect(container.read(authTokenProvider), isNull);
       expect(await store.read(), isNull);
       expect(pendingAndinoToken?.isCancelled, isTrue);
 
       await login(_caribeBank, 'maria@cooperativa-caribe.com');
+      expect(activeAccent(), BankPalette.caribe.lightAccent);
       expect(find.text(_caribeBank.name), findsOneWidget);
+      expect(
+        tester.widget<BankLogo>(find.byType(BankLogo)).logoUrl.toString(),
+        caribeLogo,
+      );
+      expect(caribeFilters, [null]);
       expect(find.text('¡Hola, María Fernanda Lora!'), findsOneWidget);
       expect((await store.read())?.bankLabel, _caribeBank.name);
       expect(find.textContaining('Juan Pérez'), findsNothing);
@@ -1156,7 +1345,7 @@ void main() {
       await tester.tap(find.text('Reintentar'));
       await tester.pump();
       await tester.pump();
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('Cargando cuentas…'), findsOneWidget);
       lateAndino.complete(
         accounts([
           account('banco-andino', '1234564589', '8888', 'COP', 'ACTIVE'),
@@ -1189,7 +1378,12 @@ void main() {
         ]),
       );
 
-      router.go('/transactions/transfer');
+      router.go('/dashboard');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('quick_action_transfer')));
+      await tester.pumpAndSettle();
+      expect(find.text('Bre-B'), findsOneWidget);
+      await tester.tap(find.text('Mismo banco'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('review_transfer_button')), findsOneWidget);
       expect(
@@ -1197,10 +1391,16 @@ void main() {
         findsOneWidget,
       );
 
+      router.go('/operations');
+      await tester.pumpAndSettle();
+      expect(find.byType(OperationsScreen), findsOneWidget);
+      expect(activeAccent(), BankPalette.caribe.lightAccent);
       router.go('/history');
       await tester.pumpAndSettle();
       expect(find.text('Todavía no hay movimientos.'), findsOneWidget);
+      expect(activeAccent(), BankPalette.caribe.lightAccent);
       await container.read(authProvider.notifier).logout();
+      await tester.pumpAndSettle();
     });
   });
 }

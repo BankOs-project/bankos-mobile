@@ -17,6 +17,9 @@ class SessionAccount {
     required this.currency,
     required this.balanceUnits,
     required this.status,
+    this.type,
+    this.canDeactivateAt,
+    this.requiresAdminReactivation,
   });
 
   final String accountNumber;
@@ -24,6 +27,9 @@ class SessionAccount {
   // FastAPI serializa Decimal con hasta cuatro decimales.
   final BigInt balanceUnits;
   final AccountStatus status;
+  final String? type;
+  final DateTime? canDeactivateAt;
+  final bool? requiresAdminReactivation;
 
   String get maskedNumber =>
       '•••• ${accountNumber.substring(accountNumber.length - 4)}';
@@ -49,6 +55,14 @@ class SessionAccount {
       currency: currency,
       balanceUnits: parseMoneyUnits(json['balance']),
       status: status,
+      type: switch (json['account_type'] ?? json['type']) {
+        final String value when value.trim().isNotEmpty => value.trim(),
+        _ => null,
+      },
+      canDeactivateAt: json['can_deactivate_at'] == null
+          ? null
+          : DateTime.parse(json['can_deactivate_at'] as String),
+      requiresAdminReactivation: json['requires_admin_reactivation'] as bool?,
     );
   }
 }

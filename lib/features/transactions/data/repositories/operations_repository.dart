@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 
+import '../../../accounts/domain/models/session_account.dart';
 import '../../../auth/domain/models/auth_models.dart';
+import '../../domain/models/financial_summary.dart';
 import '../../domain/models/transaction_models.dart';
 
 class OperationsRepository {
@@ -36,7 +38,27 @@ class OperationsRepository {
     if (data['operation_type'] != draft.type.apiValue) {
       throw const FormatException('La cotización no coincide.');
     }
-    return OperationQuote.fromJson(data);
+    final quote = OperationQuote.fromJson(data);
+    if (quote.amount != parseMoneyUnits(draft.amount)) {
+      throw const FormatException('El monto de la cotización no coincide.');
+    }
+    if (draft.type == FinancialOperationType.transfer &&
+        (quote.id == null ||
+            quote.id!.isEmpty ||
+            quote.expiresAt == null ||
+            quote.transferMode != draft.transferMode ||
+            (draft.transferMode == TransferMode.otherBank &&
+                (quote.recipient == null ||
+                    quote.recipient!.lastFour.length != 4 ||
+                    draft.destinationNumber?.endsWith(
+                          quote.recipient!.lastFour,
+                        ) !=
+                        true)))) {
+      throw const FormatException(
+        'Los datos de la transferencia no coinciden.',
+      );
+    }
+    return quote;
   }
 
   Future<({List<OperationReceipt> items, int? nextSkip})> fetchHistory(
@@ -85,6 +107,56 @@ class OperationsRepository {
     );
   }
 
+  Future<List<FinancialCurrencySummary>> fetchFinancialSummary(
+    AuthSession session, {
+    required DateTime start,
+    required DateTime end,
+    required String? accountNumber,
+    required CancelToken cancelToken,
+  }) async {
+    final startUtc = start.toUtc();
+    final endUtc = end.toUtc();
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/transactions/summary',
+      queryParameters: {
+        'start_date': startUtc.toIso8601String(),
+        'end_date': endUtc.toIso8601String(),
+        'account_number': ?accountNumber,
+      },
+      options: _options(session),
+      cancelToken: cancelToken,
+    );
+    final data = _data(response);
+    final currencies = data['currencies'];
+    if (currencies is! List ||
+        !data.containsKey('account_number') ||
+        data['account_number'] != accountNumber ||
+        DateTime.tryParse('${data['start_date']}') != startUtc ||
+        DateTime.tryParse('${data['end_date']}') != endUtc) {
+      throw const FormatException(
+        'El resumen financiero no coincide con la consulta.',
+      );
+    }
+
+    final totals = <FinancialCurrencySummary>[];
+    final seen = <String>{};
+    for (final item in currencies) {
+      if (item is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Importes inválidos en el resumen financiero.',
+        );
+      }
+      final total = FinancialCurrencySummary.fromJson(item);
+      if (!seen.add(total.currency)) {
+        throw const FormatException(
+          'Moneda repetida en el resumen financiero.',
+        );
+      }
+      totals.add(total);
+    }
+    return totals;
+  }
+
   Future<OperationReceipt> execute(
     AuthSession session,
     ConfirmedOperation operation,
@@ -123,6 +195,21 @@ class OperationsRepository {
       );
     }
     final receipt = OperationReceipt.fromJson(data, operation.type);
+    if (operation.type == FinancialOperationType.transfer &&
+        operation.body.containsKey('quote_id')) {
+      // La cotización identifica las cuentas sin repetirlas en la confirmación.
+      if (receipt.sourceAccount == null ||
+          receipt.transferMode == null ||
+          (receipt.transferMode == TransferMode.otherBank
+              ? receipt.destinationAccount != null ||
+                    receipt.transferReference == null
+              : receipt.destinationAccount == null)) {
+        throw const FormatException(
+          'El comprobante de transferencia está incompleto.',
+        );
+      }
+      return receipt;
+    }
     final expectedSource = switch (operation.type) {
       FinancialOperationType.transfer =>
         operation.body['source_account_number'],
@@ -170,6 +257,22 @@ class OperationRejected implements Exception {
 
 String operationErrorMessage(Object error) {
   final body = error is DioException ? error.response?.data : null;
+  switch (body is Map ? body['internal_code'] : null) {
+    case 'QUOTE_EXPIRED':
+      return 'La cotización venció. Vuelve a cotizar y confirma las nuevas condiciones.';
+    case 'QUOTE_STALE':
+      return 'La cotización cambió. Vuelve a cotizar y confirma las nuevas condiciones.';
+    case 'QUOTE_UNAVAILABLE':
+      return 'La cotización ya no está disponible. Solicita una nueva.';
+    case 'QUOTE_ALREADY_USED':
+      return 'La cotización ya se utilizó. Consulta Movimientos antes de repetir la transferencia.';
+    case 'DESTINATION_UNAVAILABLE':
+      return 'El destino no está disponible.';
+    case 'INTERBANK_DISABLED':
+      return 'La transferencia simulada a otro banco está deshabilitada en este entorno.';
+    case 'TRANSFER_QUOTE_UNAVAILABLE':
+      return 'La cotización está temporalmente indisponible. Intenta de nuevo.';
+  }
   final message = body is Map ? body['message'] : null;
   if (message is String && message.trim().isNotEmpty) return message;
   return 'No se pudo consultar la operación. Intenta nuevamente.';

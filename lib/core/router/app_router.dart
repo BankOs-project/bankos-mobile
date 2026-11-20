@@ -12,10 +12,14 @@ import '../../features/auth/presentation/screens/session_startup_screen.dart';
 import '../../features/accounts/presentation/screens/main_shell_screen.dart';
 import '../../features/accounts/presentation/screens/dashboard_screen.dart';
 import '../../features/accounts/presentation/screens/accounts_screen.dart';
+import '../../features/accounts/presentation/screens/account_detail_screen.dart';
 import '../../features/operations/presentation/screens/operations_screen.dart';
 import '../../features/history/presentation/screens/history_screen.dart';
+import '../../features/settings/presentation/screens/dashboard_menu_screen.dart';
+import '../../features/settings/presentation/screens/general_settings_screen.dart';
 import '../../features/transactions/domain/models/transaction_models.dart';
 import '../../features/transactions/presentation/screens/transfer_screen.dart';
+import '../../features/transactions/presentation/screens/transfer_mode_screen.dart';
 import '../../features/transactions/presentation/screens/summary_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -65,6 +69,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return RegistrationScreen(key: ValueKey(bank.id), bank: bank);
         },
       ),
+      GoRoute(
+        path: '/menu',
+        builder: (context, state) => const DashboardMenuScreen(),
+        routes: [
+          GoRoute(
+            path: 'settings',
+            builder: (context, state) => const GeneralSettingsScreen(),
+          ),
+        ],
+      ),
       ShellRoute(
         builder: (context, state, child) => MainShellScreen(child: child),
         routes: [
@@ -75,6 +89,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/accounts',
             builder: (context, state) => const AccountsScreen(),
+            routes: [
+              GoRoute(
+                path: ':accountNumber',
+                builder: (context, state) {
+                  final number = state.pathParameters['accountNumber']!;
+                  return AccountDetailScreen(
+                    key: ValueKey(number),
+                    number: number,
+                  );
+                },
+              ),
+            ],
           ),
           GoRoute(
             path: '/operations',
@@ -94,12 +120,38 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             'withdrawal' => FinancialOperationType.withdrawal,
             _ => FinancialOperationType.transfer,
           };
-          return TransferScreen(key: ValueKey(type), initialType: type);
+          final mode = switch (state.uri.queryParameters['mode']) {
+            'same-bank' => TransferMode.sameBank,
+            'other-bank' => TransferMode.otherBank,
+            _ => null,
+          };
+          if (type == FinancialOperationType.transfer && mode == null) {
+            return const TransferModeScreen();
+          }
+          return TransferScreen(
+            key: ValueKey((type, mode)),
+            initialType: type,
+            transferMode: mode ?? TransferMode.sameBank,
+          );
         },
       ),
       GoRoute(
         path: '/transactions/summary',
         builder: (context, state) => const SummaryScreen(),
+      ),
+      GoRoute(
+        path: '/history/receipt',
+        redirect: (context, state) {
+          final selection = state.extra;
+          if (selection is! HistoricalReceipt ||
+              !identical(selection.session, ref.read(activeSessionProvider)) ||
+              !selection.receipt.isConfirmedTransfer) {
+            return '/history';
+          }
+          return null;
+        },
+        builder: (context, state) =>
+            SummaryScreen(historicalReceipt: state.extra as HistoricalReceipt),
       ),
     ],
   );

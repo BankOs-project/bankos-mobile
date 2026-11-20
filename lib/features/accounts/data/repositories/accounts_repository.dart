@@ -24,9 +24,7 @@ class AccountsRepository {
           'limit': limit,
           if (session.role == 'administrador') 'owner_id': session.userId,
         },
-        options: Options(
-          headers: {'Authorization': 'Bearer ${session.accessToken}'},
-        ),
+        options: _options(session),
         cancelToken: cancelToken,
       );
       final body = response.data;
@@ -41,12 +39,7 @@ class AccountsRepository {
         throw const FormatException('Paginación de cuentas inválida.');
       }
       for (final item in items) {
-        if (item is! Map<String, dynamic> ||
-            item['tenant_id'] != session.tenantId ||
-            item['owner_id'] != session.userId) {
-          throw const FormatException('Cuenta ajena a la sesión.');
-        }
-        final account = SessionAccount.fromJson(item);
+        final account = _ownedAccount(session, item);
         accounts[account.accountNumber] = account;
       }
       skip += items.length;
@@ -55,4 +48,73 @@ class AccountsRepository {
       }
     }
   }
+
+  Future<SessionAccount> fetchAccount(
+    AuthSession session,
+    String number, {
+    required CancelToken cancelToken,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/accounts/${Uri.encodeComponent(number)}',
+      options: _options(session),
+      cancelToken: cancelToken,
+    );
+    return _accountResponse(
+      session,
+      number,
+      response,
+      'ACCOUNT_DETAIL_FETCHED',
+    );
+  }
+
+  Future<void> changeStatus(
+    AuthSession session,
+    String number, {
+    required bool reactivate,
+  }) async {
+    final action = reactivate ? 'reactivate' : 'deactivate';
+    final response = await _dio.patch<Map<String, dynamic>>(
+      '/accounts/${Uri.encodeComponent(number)}/$action',
+      options: _options(session),
+    );
+    final account = _accountResponse(
+      session,
+      number,
+      response,
+      reactivate ? 'ACCOUNT_REACTIVATED' : 'ACCOUNT_DEACTIVATED',
+    );
+    if (account.status !=
+        (reactivate ? AccountStatus.active : AccountStatus.inactive)) {
+      throw const FormatException('El estado de la cuenta no coincide.');
+    }
+  }
+
+  SessionAccount _accountResponse(
+    AuthSession session,
+    String number,
+    Response<Map<String, dynamic>> response,
+    String expectedCode,
+  ) {
+    final body = response.data;
+    if (body?['success'] != true || body?['internal_code'] != expectedCode) {
+      throw const FormatException('Respuesta de cuenta inválida.');
+    }
+    final account = _ownedAccount(session, body?['data']);
+    if (account.accountNumber != number) {
+      throw const FormatException('El número de cuenta no coincide.');
+    }
+    return account;
+  }
+
+  SessionAccount _ownedAccount(AuthSession session, Object? item) {
+    if (item is! Map<String, dynamic> ||
+        item['tenant_id'] != session.tenantId ||
+        item['owner_id'] != session.userId) {
+      throw const FormatException('Cuenta ajena a la sesión.');
+    }
+    return SessionAccount.fromJson(item);
+  }
+
+  Options _options(AuthSession session) =>
+      Options(headers: {'Authorization': 'Bearer ${session.accessToken}'});
 }

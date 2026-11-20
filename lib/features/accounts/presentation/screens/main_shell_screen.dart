@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../../core/theme/bank_theme.dart';
+import '../../../auth/domain/models/public_bank.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/bottom_nav_provider.dart';
 
 class MainShellScreen extends ConsumerWidget {
@@ -11,8 +15,13 @@ class MainShellScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentIndex = ref.watch(bottomNavIndexProvider);
+    final bankName = ref.watch(
+      activeSessionProvider.select((session) => session?.bankLabel),
+    );
+    final appTheme = Theme.of(context);
+    final palette = BankPalette.fromName(normalizeBankSearch(bankName ?? ''));
 
-    return Scaffold(
+    final shell = Scaffold(
       body: child,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
@@ -25,10 +34,7 @@ class MainShellScreen extends ConsumerWidget {
           if (index == 3) context.go('/history');
         },
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Dashboard',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Dashboard'),
           BottomNavigationBarItem(
             icon: Icon(Icons.account_balance),
             label: 'Cuentas',
@@ -39,10 +45,14 @@ class MainShellScreen extends ConsumerWidget {
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.history),
-            label: 'Historial',
+            label: 'Movimientos',
           ),
         ],
       ),
+    );
+    return Theme(
+      data: palette?.theme(appTheme.brightness) ?? appTheme,
+      child: shell,
     );
   }
 }

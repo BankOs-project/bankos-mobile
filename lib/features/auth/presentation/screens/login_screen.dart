@@ -84,7 +84,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final authState = ref.watch(authProvider);
 
     return Scaffold(
-      backgroundColor: AppTheme.scaffoldBackgroundColor,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
@@ -153,6 +152,7 @@ class _AmbientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Positioned.fill(
       child: IgnorePointer(
         child: Stack(
@@ -167,8 +167,8 @@ class _AmbientBackground extends StatelessWidget {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      AppTheme.primaryColor.withValues(alpha: 0.16),
-                      AppTheme.primaryColor.withValues(alpha: 0.0),
+                      colors.primary.withValues(alpha: 0.16),
+                      colors.primary.withValues(alpha: 0.0),
                     ],
                   ),
                 ),
@@ -184,8 +184,8 @@ class _AmbientBackground extends StatelessWidget {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      AppTheme.secondaryColor.withValues(alpha: 0.14),
-                      AppTheme.secondaryColor.withValues(alpha: 0.0),
+                      colors.secondary.withValues(alpha: 0.14),
+                      colors.secondary.withValues(alpha: 0.0),
                     ],
                   ),
                 ),
@@ -205,6 +205,10 @@ class _BrandHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final badgeColor = colors.brightness == Brightness.dark
+        ? AppTheme.mintGlowColor
+        : colors.primary;
     return Column(
       children: [
         Container(
@@ -214,12 +218,12 @@ class _BrandHeader extends StatelessWidget {
             color: AppTheme.scaffoldBackgroundColor,
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: AppTheme.primaryColor.withValues(alpha: 0.30),
+              color: colors.primary.withValues(alpha: 0.30),
               width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: AppTheme.primaryColor.withValues(alpha: 0.18),
+                color: colors.primary.withValues(alpha: 0.18),
                 blurRadius: 28,
                 spreadRadius: 1,
                 offset: const Offset(0, 8),
@@ -242,27 +246,21 @@ class _BrandHeader extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withValues(alpha: 0.12),
+            color: colors.primary.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-            border: Border.all(
-              color: AppTheme.primaryColor.withValues(alpha: 0.32),
-            ),
+            border: Border.all(color: colors.primary.withValues(alpha: 0.32)),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.verified_user_outlined,
-                size: 14,
-                color: AppTheme.mintGlowColor,
-              ),
-              SizedBox(width: 6),
+              Icon(Icons.verified_user_outlined, size: 14, color: badgeColor),
+              const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   'Banca digital multitenant',
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: AppTheme.mintGlowColor,
+                    color: badgeColor,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.2,
@@ -314,15 +312,18 @@ class _LoginCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppTheme.cardColor,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        border: Border.all(color: AppTheme.outlineColor, width: 1),
+        border: Border.all(color: colors.outline, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.32),
+            color: Colors.black.withValues(
+              alpha: colors.brightness == Brightness.dark ? 0.32 : 0.10,
+            ),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
@@ -334,10 +335,10 @@ class _LoginCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 'Iniciar sesión',
                 style: TextStyle(
-                  color: AppTheme.textPrimaryColor,
+                  color: colors.onSurface,
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.3,
@@ -347,7 +348,7 @@ class _LoginCard extends StatelessWidget {
               Text(
                 bankName,
                 style: TextStyle(
-                  color: AppTheme.textSecondaryColor,
+                  color: colors.onSurfaceVariant,
                   fontSize: 13.5,
                   height: 1.4,
                 ),
@@ -367,7 +368,7 @@ class _LoginCard extends StatelessWidget {
                 textInputAction: TextInputAction.next,
                 autofillHints: const [AutofillHints.email],
                 autocorrect: false,
-                style: const TextStyle(color: AppTheme.textPrimaryColor),
+                style: TextStyle(color: colors.onSurface),
                 decoration: const InputDecoration(
                   labelText: 'Correo electrónico',
                   hintText: 'usuario@banco-andino.com',
@@ -383,7 +384,7 @@ class _LoginCard extends StatelessWidget {
                 obscureText: obscurePassword,
                 textInputAction: TextInputAction.done,
                 autofillHints: const [AutofillHints.password],
-                style: const TextStyle(color: AppTheme.textPrimaryColor),
+                style: TextStyle(color: colors.onSurface),
                 decoration: InputDecoration(
                   labelText: 'Contraseña',
                   hintText: 'Ingresa tu contraseña',
@@ -444,21 +445,22 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppTheme.errorColor.withValues(alpha: 0.12),
+        color: colors.error.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(AppTheme.radiusInput),
-        border: Border.all(color: AppTheme.errorColor.withValues(alpha: 0.45)),
+        border: Border.all(color: colors.error.withValues(alpha: 0.45)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 1),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
             child: Icon(
               Icons.error_outline_rounded,
-              color: AppTheme.errorColor,
+              color: colors.error,
               size: 18,
             ),
           ),
@@ -466,8 +468,8 @@ class _ErrorBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(
-                color: AppTheme.textPrimaryColor,
+              style: TextStyle(
+                color: colors.onSurface,
                 fontSize: 13,
                 height: 1.35,
               ),
@@ -476,12 +478,12 @@ class _ErrorBanner extends StatelessWidget {
           InkWell(
             onTap: onDismiss,
             borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-            child: const Padding(
-              padding: EdgeInsets.all(2),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
               child: Icon(
                 Icons.close_rounded,
                 size: 16,
-                color: AppTheme.textSecondaryColor,
+                color: colors.onSurfaceVariant,
               ),
             ),
           ),
@@ -502,17 +504,18 @@ class _GradientSubmitButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final enabled = onPressed != null;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: enabled ? AppTheme.primaryGradient : null,
-        color: enabled ? null : AppTheme.surfaceVariantColor,
+        gradient: enabled ? AppTheme.primaryGradient(colors) : null,
+        color: enabled ? null : colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(AppTheme.radiusButton),
         boxShadow: enabled
             ? [
                 BoxShadow(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.28),
+                  color: colors.primary.withValues(alpha: 0.28),
                   blurRadius: 16,
                   offset: const Offset(0, 6),
                 ),
@@ -530,7 +533,7 @@ class _GradientSubmitButton extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Center(
                 child: isLoading
-                    ? const Row(
+                    ? Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           SizedBox(
@@ -538,16 +541,16 @@ class _GradientSubmitButton extends StatelessWidget {
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.2,
-                              color: AppTheme.primaryColor,
+                              color: colors.primary,
                             ),
                           ),
-                          SizedBox(width: 12),
+                          const SizedBox(width: 12),
                           Flexible(
                             child: Text(
                               'Verificando credenciales...',
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: AppTheme.textSecondaryColor,
+                                color: colors.onSurfaceVariant,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -555,7 +558,7 @@ class _GradientSubmitButton extends StatelessWidget {
                           ),
                         ],
                       )
-                    : const Row(
+                    : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Flexible(
@@ -563,18 +566,18 @@ class _GradientSubmitButton extends StatelessWidget {
                               'Iniciar Sesión',
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: AppTheme.onPrimaryColor,
+                                color: colors.onPrimary,
                                 fontSize: 15.5,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 0.2,
                               ),
                             ),
                           ),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           Icon(
                             Icons.arrow_forward_rounded,
                             size: 18,
-                            color: AppTheme.onPrimaryColor,
+                            color: colors.onPrimary,
                           ),
                         ],
                       ),
@@ -592,21 +595,22 @@ class _SecurityFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    final colors = Theme.of(context).colorScheme;
+    return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(
           Icons.lock_outline_rounded,
           size: 14,
-          color: AppTheme.textMutedColor,
+          color: colors.onSurfaceVariant,
         ),
-        SizedBox(width: 6),
+        const SizedBox(width: 6),
         Flexible(
           child: Text(
             'Conexión protegida con autenticación JWT · BankOs',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: AppTheme.textMutedColor,
+              color: colors.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),

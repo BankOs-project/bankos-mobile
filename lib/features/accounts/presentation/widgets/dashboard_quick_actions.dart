@@ -11,6 +11,7 @@ class DashboardQuickActions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -18,11 +19,7 @@ class DashboardQuickActions extends ConsumerWidget {
           padding: EdgeInsets.symmetric(horizontal: 4.0),
           child: Text(
             'Acciones Rápidas',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimaryColor,
-            ),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ),
         const SizedBox(height: 12),
@@ -33,14 +30,14 @@ class DashboardQuickActions extends ConsumerWidget {
               key: const Key('quick_action_transfer'),
               icon: Icons.send_rounded,
               label: 'Transferir',
-              color: AppTheme.primaryColor,
-              onTap: () => context.go('/transactions/transfer'),
+              color: colors.primary,
+              onTap: () => context.push('/transactions/transfer'),
             ),
             _QuickActionItem(
               key: const Key('quick_action_accounts'),
               icon: Icons.account_balance_rounded,
               label: 'Cuentas',
-              color: AppTheme.secondaryColor,
+              color: colors.secondary,
               onTap: () {
                 ref.read(bottomNavIndexProvider.notifier).state = 1;
                 context.go('/accounts');
@@ -50,14 +47,14 @@ class DashboardQuickActions extends ConsumerWidget {
               key: const Key('quick_action_deposit'),
               icon: Icons.add_circle_outline_rounded,
               label: 'Depósito',
-              color: AppTheme.infoColor,
+              color: colors.tertiary,
               onTap: () => context.go('/transactions/transfer?type=deposit'),
             ),
             _QuickActionItem(
               key: const Key('quick_action_history'),
               icon: Icons.history_rounded,
-              label: 'Historial',
-              color: AppTheme.tertiaryColor,
+              label: 'Movimientos',
+              color: colors.onSurfaceVariant,
               onTap: () {
                 ref.read(bottomNavIndexProvider.notifier).state = 3;
                 context.go('/history');
@@ -86,6 +83,7 @@ class _QuickActionItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -97,9 +95,11 @@ class _QuickActionItem extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 12.0),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceVariantColor,
+                color: colors.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-                border: Border.all(color: AppTheme.outlineColor),
+                border: Border.all(
+                  color: colors.outline.withValues(alpha: 0.45),
+                ),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -120,7 +120,6 @@ class _QuickActionItem extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimaryColor,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

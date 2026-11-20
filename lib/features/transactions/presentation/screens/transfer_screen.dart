@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../accounts/domain/models/session_account.dart';
 import '../../../accounts/presentation/providers/bottom_nav_provider.dart';
 import '../../../accounts/presentation/widgets/session_accounts_content.dart';
+import '../../../auth/domain/models/public_bank.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/repositories/operations_repository.dart';
 import '../../domain/models/transaction_models.dart';
@@ -16,9 +20,11 @@ class TransferScreen extends ConsumerStatefulWidget {
   const TransferScreen({
     super.key,
     this.initialType = FinancialOperationType.transfer,
+    this.transferMode = TransferMode.sameBank,
   });
 
   final FinancialOperationType initialType;
+  final TransferMode transferMode;
 
   @override
   ConsumerState<TransferScreen> createState() => _TransferScreenState();
@@ -28,20 +34,30 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   final _form = GlobalKey<FormState>();
   final _amount = TextEditingController();
   final _destination = TextEditingController();
-  late var _type = widget.initialType;
+  FinancialOperationType get _type => widget.initialType;
+  bool get _otherBank =>
+      _type == FinancialOperationType.transfer &&
+      widget.transferMode == TransferMode.otherBank;
   String? _selectedAccount;
+  String? _destinationBank;
   String? _quoteError;
+  Timer? _quoteRetry;
   bool _reviewing = false;
 
   @override
   void dispose() {
+    _quoteRetry?.cancel();
     _amount.dispose();
     _destination.dispose();
     super.dispose();
   }
 
   Future<void> _review(SessionAccount account) async {
-    if (_reviewing || _form.currentState?.validate() != true) return;
+    if (_reviewing ||
+        _quoteRetry?.isActive == true ||
+        _form.currentState?.validate() != true) {
+      return;
+    }
     final session = ref.read(activeSessionProvider);
     if (session == null) return;
     final controller = ref.read(operationsProvider.notifier);
@@ -53,14 +69,16 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       destinationNumber: _type == FinancialOperationType.transfer
           ? _destination.text.trim()
           : null,
+      transferMode: widget.transferMode,
+      destinationBankId: _otherBank ? _destinationBank : null,
     );
     FocusScope.of(context).unfocus();
     setState(() {
       _reviewing = true;
-      _quoteError = null;
+      if (_quoteRetry?.isActive != true) _quoteError = null;
     });
     try {
-      final destination = draft.destinationNumber == null
+      final destination = draft.destinationNumber == null || _otherBank
           ? null
           : await repository.findDestination(session, draft.destinationNumber!);
       if (!mounted || !identical(ref.read(activeSessionProvider), session)) {
@@ -70,6 +88,12 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       if (!mounted || !identical(ref.read(activeSessionProvider), session)) {
         return;
       }
+      if (_type == FinancialOperationType.transfer && quote.expired) {
+        setState(
+          () => _quoteError = 'La cotización venció. Solicita una nueva.',
+        );
+        return;
+      }
       final confirmed = await showModalBottomSheet<bool>(
         context: context,
         isScrollControlled: true,
@@ -77,16 +101,35 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         builder: (context) => _QuoteSheet(
           account: account,
           destination: destination,
+          bankName:
+              quote.recipient?.bankName ??
+              (_type == FinancialOperationType.transfer
+                  ? session.bankLabel
+                  : null),
           quote: quote,
           type: draft.type,
         ),
       );
       if (mounted && confirmed == true) {
-        await controller.submit(session, draft);
+        await controller.submit(session, draft, quote: quote);
       }
     } catch (error) {
       if (mounted && identical(ref.read(activeSessionProvider), session)) {
-        setState(() => _quoteError = operationErrorMessage(error));
+        final response = error is DioException ? error.response : null;
+        final wait = response?.statusCode == 429
+            ? int.tryParse(response?.headers.value('retry-after') ?? '')
+            : null;
+        if (wait != null && wait > 0) {
+          _quoteRetry?.cancel();
+          _quoteRetry = Timer(Duration(seconds: wait), () {
+            if (mounted) setState(() => _quoteError = null);
+          });
+        }
+        setState(
+          () => _quoteError = wait != null && wait > 0
+              ? 'Espera $wait segundos antes de volver a cotizar.'
+              : operationErrorMessage(error),
+        );
       }
     } finally {
       if (mounted) setState(() => _reviewing = false);
@@ -104,11 +147,21 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Operaciones'),
+        title: Text(
+          _type == FinancialOperationType.transfer
+              ? widget.transferMode.label
+              : _type.label,
+        ),
         leading: BackButton(
           onPressed: () {
-            ref.read(bottomNavIndexProvider.notifier).state = 2;
-            context.go('/operations');
+            if (context.canPop()) {
+              context.pop();
+            } else if (_type == FinancialOperationType.transfer) {
+              context.go('/transactions/transfer');
+            } else {
+              ref.read(bottomNavIndexProvider.notifier).state = 2;
+              context.go('/operations');
+            }
           },
         ),
       ),
@@ -172,29 +225,23 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       orElse: () => accounts.first,
     );
     final message = _quoteError ?? state.message;
+    final directory = _otherBank ? ref.watch(bankDirectoryProvider) : null;
+    final session = ref.watch(activeSessionProvider);
+    final banks = directory?.asData?.value.where((bank) {
+      final ownId = session?.bankId;
+      return ownId == null
+          ? normalizeBankSearch(bank.name) !=
+                normalizeBankSearch(session?.bankLabel ?? '')
+          : bank.id != ownId;
+    }).toList();
+    final otherBankSelected =
+        banks?.any((bank) => bank.id == _destinationBank) ?? false;
     return Form(
       key: _form,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: 16,
         children: [
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final type in FinancialOperationType.values)
-                ChoiceChip(
-                  key: ValueKey('op_tab_${type.name}'),
-                  label: Text(type.label),
-                  selected: _type == type,
-                  onSelected: _reviewing
-                      ? null
-                      : (_) => setState(() {
-                          _type = type;
-                          _quoteError = null;
-                        }),
-                ),
-            ],
-          ),
           DropdownButtonFormField<String>(
             key: ValueKey(source.accountNumber),
             initialValue: source.accountNumber,
@@ -218,6 +265,39 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
           Text(
             'Saldo actual ${formatAccountBalance(source.balanceUnits, source.currency)}',
           ),
+          if (directory != null) ...[
+            const Text('Transferencia simulada a otro banco.'),
+            if (directory.isLoading)
+              const LinearProgressIndicator(semanticsLabel: 'Cargando bancos')
+            else if (directory.hasError)
+              ListTile(
+                title: const Text('No pudimos cargar los bancos.'),
+                trailing: TextButton(
+                  onPressed: () => ref.invalidate(bankDirectoryProvider),
+                  child: const Text('Reintentar'),
+                ),
+              )
+            else if (banks == null || banks.isEmpty)
+              const Text('Por ahora no hay otros bancos disponibles.')
+            else
+              DropdownButtonFormField<String>(
+                key: const Key('destination_bank_field'),
+                initialValue: otherBankSelected ? _destinationBank : null,
+                decoration: const InputDecoration(labelText: 'Banco destino'),
+                isExpanded: true,
+                items: [
+                  for (final bank in banks)
+                    DropdownMenuItem(value: bank.id, child: Text(bank.name)),
+                ],
+                onChanged: _reviewing
+                    ? null
+                    : (value) => setState(() {
+                        _destinationBank = value;
+                        _destination.clear();
+                        _quoteError = null;
+                      }),
+              ),
+          ],
           if (_type == FinancialOperationType.transfer)
             TextFormField(
               key: const Key('destination_account_field'),
@@ -235,7 +315,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 if (value == null || value.isEmpty) {
                   return 'Ingresa el número de cuenta destino.';
                 }
-                if (value == source.accountNumber) {
+                if (!_otherBank && value == source.accountNumber) {
                   return 'Elige una cuenta distinta de la de origen.';
                 }
                 return null;
@@ -277,7 +357,12 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
             ),
           FilledButton.icon(
             key: const Key('review_transfer_button'),
-            onPressed: _reviewing ? null : () => _review(source),
+            onPressed:
+                _reviewing ||
+                    _quoteRetry?.isActive == true ||
+                    (_otherBank && !otherBankSelected)
+                ? null
+                : () => _review(source),
             icon: const Icon(Icons.receipt_long_outlined),
             label: Text(_reviewing ? 'Consultando…' : 'Revisar cotización'),
           ),
@@ -344,12 +429,14 @@ class _QuoteSheet extends StatelessWidget {
   const _QuoteSheet({
     required this.account,
     required this.destination,
+    required this.bankName,
     required this.quote,
     required this.type,
   });
 
   final SessionAccount account;
   final TransferDestination? destination;
+  final String? bankName;
   final OperationQuote quote;
   final FinancialOperationType type;
 
@@ -366,13 +453,29 @@ class _QuoteSheet extends StatelessWidget {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
-            if (destination case final receiver?)
+            if (quote.transferMode == TransferMode.otherBank)
+              const Text('Transferencia simulada a otro banco.'),
+            if (bankName case final bank?)
+              ReceiptKeyValueRow(label: 'Banco destino', value: bank),
+            if ((quote.recipient?.maskedHolderName ??
+                    destination?.maskedHolderName)
+                case final holder?)
+              ReceiptKeyValueRow(label: 'Destinatario', value: holder),
+            if (quote.recipient case final recipient?)
               ReceiptKeyValueRow(
-                label: 'Destinatario',
-                value:
-                    '${receiver.holderName} · ${maskAccountNumber(receiver.accountNumber)}',
+                label: 'Cuenta destino',
+                value: '•••• ${recipient.lastFour}',
+              )
+            else if (destination case final receiver?)
+              ReceiptKeyValueRow(
+                label: 'Cuenta destino',
+                value: maskAccountNumber(receiver.accountNumber),
               ),
             ReceiptKeyValueRow(label: 'Cuenta', value: account.maskedNumber),
+            ReceiptKeyValueRow(
+              label: 'Monto',
+              value: formatAccountBalance(quote.amount, quote.sourceCurrency),
+            ),
             ReceiptKeyValueRow(
               label: 'Total a debitar',
               value: formatAccountBalance(quote.debit, quote.sourceCurrency),
@@ -382,11 +485,12 @@ class _QuoteSheet extends StatelessWidget {
               label: 'Comisión',
               value: formatAccountBalance(quote.fee, quote.sourceCurrency),
             ),
-            ReceiptKeyValueRow(
-              label: 'Tasa de cambio',
-              value:
-                  '1 ${quote.sourceCurrency} = ${quote.rate} ${quote.destinationCurrency}',
-            ),
+            if (quote.sourceCurrency != quote.destinationCurrency)
+              ReceiptKeyValueRow(
+                label: 'Tasa de cambio',
+                value:
+                    '1 ${quote.sourceCurrency} = ${quote.rate} ${quote.destinationCurrency}',
+              ),
             ReceiptKeyValueRow(
               label: 'Importe a recibir',
               value: formatAccountBalance(

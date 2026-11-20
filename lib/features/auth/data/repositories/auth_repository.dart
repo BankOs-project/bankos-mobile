@@ -150,6 +150,8 @@ class AuthRepository {
       return AuthSession.fromJson(
         data,
         bankLabel: request.bankName,
+        bankLogoUrl: request.bankLogoUrl,
+        bankId: request.bankId,
         email: request.email,
       );
     } on AuthException {

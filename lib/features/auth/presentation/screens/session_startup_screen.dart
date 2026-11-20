@@ -53,16 +53,18 @@ class _SessionStartupScreenState extends ConsumerState<SessionStartupScreen>
     final auth = ref.read(authProvider.notifier);
     final cleanupFailed = startup == SessionStartup.cleanupFailed;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final showBrand =
+        !introFinished ||
+        startup == SessionStartup.checking ||
+        startup == SessionStartup.ready;
 
     return Scaffold(
+      backgroundColor: showBrand ? AppTheme.scaffoldBackgroundColor : null,
       body: SafeArea(
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child:
-                !introFinished ||
-                    startup == SessionStartup.checking ||
-                    startup == SessionStartup.ready
+            child: showBrand
                 ? _StartupBrand(
                     intro: introFinished || reduceMotion ? null : _intro,
                     checking:
@@ -200,15 +202,23 @@ class _StartupBrand extends StatelessWidget {
               spacing: 8,
               children: [
                 if (reduceMotion)
-                  const Icon(Icons.hourglass_top_rounded, size: 16)
+                  const Icon(
+                    Icons.hourglass_top_rounded,
+                    size: 16,
+                    color: AppTheme.primaryColor,
+                  )
                 else
                   const SizedBox.square(
                     dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.primaryColor,
+                    ),
                   ),
                 Text(
                   'Verificando sesión…',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: AppTheme.textSecondaryColor),
                 ),
               ],
             ),
