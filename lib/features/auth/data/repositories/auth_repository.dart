@@ -1,23 +1,113 @@
 import 'package:dio/dio.dart';
 
 import '../../domain/models/auth_models.dart';
+import '../../domain/models/public_bank.dart';
 
 class AuthRepository {
   const AuthRepository(this._dio);
 
   final Dio _dio;
 
-  Future<String?> fetchCustomerName() async {
-    final response = await _dio.get<Map<String, dynamic>>('/auth/me');
+  Future<RegistrationChallenge> startRegistration({
+    required String bankId,
+    required String email,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/auth/register',
+      data: {'bank_id': bankId, 'email': email.trim().toLowerCase()},
+      options: Options(extra: {'publicRequest': true}),
+    );
+    final body = response.data;
+    final data = body?['data'];
+    if (body?['success'] != true ||
+        body?['internal_code'] != 'REGISTRATION_PENDING' ||
+        data is! Map<String, dynamic> ||
+        data['registration_id'] is! String ||
+        (data['registration_id'] as String).isEmpty ||
+        data['expires_in'] is! int ||
+        (data['expires_in'] as int) <= 0) {
+      throw const FormatException('Respuesta de registro inválida.');
+    }
+    return RegistrationChallenge(
+      id: data['registration_id'] as String,
+      validFor: Duration(seconds: data['expires_in'] as int),
+    );
+  }
+
+  Future<void> verifyRegistration({
+    required String registrationId,
+    required String code,
+    required String fullName,
+    required String password,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/auth/register/verify',
+      data: {
+        'registration_id': registrationId,
+        'email_code': code.trim(),
+        'full_name': fullName.trim(),
+        'password': password,
+      },
+      options: Options(extra: {'publicRequest': true}),
+    );
+    if (response.data?['success'] != true ||
+        response.data?['internal_code'] != 'REGISTRATION_VERIFIED') {
+      throw const FormatException('Respuesta de verificación inválida.');
+    }
+  }
+
+  Future<List<PublicBank>> fetchBanks() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/banks',
+      options: Options(extra: {'publicRequest': true}),
+    );
+    final body = response.data;
+    final banks = body?['data'];
+    if (body?['success'] != true || banks is! List) {
+      throw const FormatException('Directorio de bancos inválido.');
+    }
+    return [
+      for (final bank in banks)
+        PublicBank.fromJson(bank as Map<String, dynamic>),
+    ];
+  }
+
+  Future<String> fetchCustomerName(AuthSession session) async {
+    final Response<Map<String, dynamic>> response;
+    try {
+      response = await _dio.get<Map<String, dynamic>>(
+        '/auth/me',
+        options: Options(
+          headers: {'Authorization': 'Bearer ${session.accessToken}'},
+        ),
+      );
+    } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      if (status == 401 || status == 403) throw _rejectedSession;
+      rethrow;
+    }
     final body = response.data;
     final profile = body?['data'];
     if (body?['success'] != true || profile is! Map<String, dynamic>) {
-      return null;
+      throw const AuthException(message: 'Perfil no disponible.');
+    }
+    if (profile['id'] != session.userId ||
+        profile['tenant_id'] != session.tenantId ||
+        profile['role'] != session.role ||
+        profile['is_active'] != true) {
+      throw _rejectedSession;
     }
 
     final name = profile['full_name'];
-    return name is String && name.trim().isNotEmpty ? name.trim() : null;
+    return name is String && name.trim().isNotEmpty
+        ? name.trim()
+        : session.email;
   }
+
+  static const _rejectedSession = AuthException(
+    message: 'La sesión dejó de ser válida. Inicia sesión de nuevo.',
+    internalCode: 'SESSION_REJECTED',
+  );
 
   /// Valida las credenciales contra `POST /api/v1/auth/login` en BankOS Backend.
   Future<AuthSession> login(LoginRequest request) async {
@@ -36,7 +126,8 @@ class AuthRepository {
       }
 
       final success = body['success'] as bool? ?? false;
-      final message = (body['message'] as String?) ??
+      final message =
+          (body['message'] as String?) ??
           'No se pudo completar el inicio de sesión.';
       final internalCode = body['internal_code'] as String?;
 
@@ -58,7 +149,7 @@ class AuthRepository {
 
       return AuthSession.fromJson(
         data,
-        tenantSlug: request.tenantSlug,
+        bankLabel: request.bankName,
         email: request.email,
       );
     } on AuthException {
@@ -128,8 +219,7 @@ class AuthRepository {
         );
       case DioExceptionType.connectionError:
         return const AuthException(
-          message:
-              'No se pudo conectar con la API local de BankOs. Verifica que el backend esté activo en el puerto 8000.',
+          message: 'No se pudo conectar con la API local de BankOs. Verifica que el backend esté activo en el puerto 8000.',
           internalCode: 'CONNECTION_ERROR',
         );
       case DioExceptionType.badResponse:
@@ -142,7 +232,8 @@ class AuthRepository {
         }
         if (statusCode == 429) {
           return const AuthException(
-            message: 'Demasiados intentos. Intenta nuevamente en unos momentos.',
+            message:
+                'Demasiados intentos. Intenta nuevamente en unos momentos.',
             internalCode: 'RATE_LIMIT_EXCEEDED',
             statusCode: 429,
           );

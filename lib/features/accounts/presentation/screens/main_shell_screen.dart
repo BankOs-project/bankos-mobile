@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../providers/accounts_mock_provider.dart';
+import '../providers/bottom_nav_provider.dart';
 
 class MainShellScreen extends ConsumerWidget {
   final Widget? child;

@@ -61,10 +61,23 @@ final dioProvider = Provider<Dio>((ref) {
     InterceptorsWrapper(
       onRequest: (options, handler) {
         final token = ref.read(authTokenProvider);
-        if (token != null && token.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $token';
+        if (token != null &&
+            token.isNotEmpty &&
+            options.extra['publicRequest'] != true) {
+          options.headers.putIfAbsent('Authorization', () => 'Bearer $token');
         }
         handler.next(options);
+      },
+      onError: (error, handler) {
+        final token = ref.read(authTokenProvider);
+        final request = error.requestOptions;
+        if (error.response?.statusCode == 401 &&
+            request.path != '/auth/login' &&
+            token != null &&
+            request.headers['Authorization'] == 'Bearer $token') {
+          ref.read(authTokenProvider.notifier).clear();
+        }
+        handler.next(error);
       },
     ),
   );

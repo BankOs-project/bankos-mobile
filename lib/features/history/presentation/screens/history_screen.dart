@@ -1,594 +1,374 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_theme.dart';
+import '../../../accounts/domain/models/session_account.dart';
+import '../../../accounts/presentation/providers/session_accounts_provider.dart';
+import '../../../auth/domain/models/auth_models.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../transactions/domain/models/transaction_models.dart';
-import '../../../transactions/presentation/providers/transactions_providers.dart';
-import '../../../transactions/presentation/widgets/transaction_badges.dart';
+import '../providers/history_provider.dart';
 
-class HistoryScreen extends ConsumerStatefulWidget {
+class HistoryScreen extends ConsumerWidget {
   const HistoryScreen({super.key});
 
   @override
-  ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(activeSessionProvider);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Historial')),
+      body: SafeArea(
+        child: session == null
+            ? const SizedBox.shrink()
+            : _SessionHistory(key: ObjectKey(session), session: session),
+      ),
+    );
+  }
 }
 
-class _HistoryScreenState extends ConsumerState<HistoryScreen> {
-  final TextEditingController _searchController = TextEditingController();
+class _SessionHistory extends ConsumerStatefulWidget {
+  const _SessionHistory({super.key, required this.session});
+
+  final AuthSession session;
+
+  @override
+  ConsumerState<_SessionHistory> createState() => _SessionHistoryState();
+}
+
+class _SessionHistoryState extends ConsumerState<_SessionHistory> {
+  final _searchField = TextEditingController();
+  Timer? _searchDelay;
+  String _search = '';
+  String? _accountNumber;
+  FinancialOperationType? _type;
+  HistoryScope? _scope;
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchDelay?.cancel();
+    _searchField.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final transactions = ref.watch(filteredTransactionsProvider);
-    final banks = ref.watch(availableHistoryBanksProvider);
-    final selectedBank = ref.watch(historyBankFilterProvider);
-    final selectedScope = ref.watch(historyScopeFilterProvider);
-    final selectedOperation = ref.watch(historyOperationFilterProvider);
-    final searchQuery = ref.watch(historySearchQueryProvider);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Historial'),
-        actions: [
-          IconButton(
-            tooltip: 'Nueva operación',
-            icon: const Icon(Icons.send_rounded, size: 20),
-            onPressed: () => context.go('/transactions/transfer'),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: TextField(
-                key: const Key('history_search_field'),
-                controller: _searchController,
-                onChanged: (value) {
-                  ref
-                      .read(historySearchQueryProvider.notifier)
-                      .setQuery(value);
-                },
-                decoration: InputDecoration(
-                  hintText: 'Buscar por banco, persona, cuenta o referencia...',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 18),
-                          onPressed: () {
-                            _searchController.clear();
-                            ref
-                                .read(historySearchQueryProvider.notifier)
-                                .setQuery('');
-                          },
-                        )
-                      : null,
-                ),
-              ),
-            ),
-            _OperationFilterBar(
-              selectedOp: selectedOperation,
-              onSelected: (op) {
-                ref
-                    .read(historyOperationFilterProvider.notifier)
-                    .setOperation(op);
-              },
-            ),
-            const SizedBox(height: 8),
-            _BankFilterBar(
-              banks: banks,
-              selectedBank: selectedBank,
-              onSelected: (bank) {
-                ref.read(historyBankFilterProvider.notifier).setBank(bank);
-              },
-            ),
-            const SizedBox(height: 8),
-            _ScopeFilterBar(
-              selectedScope: selectedScope,
-              onSelected: (scope) {
-                ref.read(historyScopeFilterProvider.notifier).setScope(scope);
-              },
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Row(
-                children: [
-                  Text(
-                    selectedOperation != null
-                        ? '${selectedOperation.label}s'
-                        : (selectedBank == null
-                            ? 'Todos los movimientos'
-                            : 'Movimientos · $selectedBank'),
-                    style: const TextStyle(
-                      color: AppTheme.textPrimaryColor,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${transactions.length} ${transactions.length == 1 ? 'registro' : 'registros'}',
-                    style: const TextStyle(
-                      color: AppTheme.textSecondaryColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: transactions.isEmpty
-                  ? _EmptyHistoryView(
-                      hasFilters: selectedBank != null ||
-                          selectedScope != null ||
-                          selectedOperation != null ||
-                          searchQuery.isNotEmpty,
-                      onClearFilters: () {
-                        _searchController.clear();
-                        ref
-                            .read(historySearchQueryProvider.notifier)
-                            .setQuery('');
-                        ref
-                            .read(historyOperationFilterProvider.notifier)
-                            .setOperation(null);
-                        ref
-                            .read(historyBankFilterProvider.notifier)
-                            .setBank(null);
-                        ref
-                            .read(historyScopeFilterProvider.notifier)
-                            .setScope(null);
-                      },
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-                      itemCount: transactions.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final record = transactions[index];
-                        return HistoryTransactionCard(
-                          record: record,
-                          focusedBank: selectedBank,
-                          onTap: () {
-                            ref
-                                .read(selectedTransactionProvider.notifier)
-                                .select(record);
-                            context.push('/transactions/summary');
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _searchChanged(String text) {
+    _searchDelay?.cancel();
+    final search = text.trim().toLowerCase();
+    if (search == _search) return;
+    _searchDelay = Timer(const Duration(milliseconds: 300), () {
+      setState(() => _search = search);
+    });
   }
-}
-
-class _OperationFilterBar extends StatelessWidget {
-  final FinancialOperationType? selectedOp;
-  final ValueChanged<FinancialOperationType?> onSelected;
-
-  const _OperationFilterBar({
-    required this.selectedOp,
-    required this.onSelected,
-  });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 34,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: [
-          ChoiceChip(
-            key: const Key('op_filter_all'),
-            label: const Text('Todas'),
-            selected: selectedOp == null,
-            onSelected: (_) => onSelected(null),
-          ),
-          ...FinancialOperationType.values.map((op) {
-            final isSelected = selectedOp == op;
-            return Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: ChoiceChip(
-                key: Key('op_filter_${op.name}'),
-                avatar: Icon(
-                  op.icon,
-                  size: 14,
-                  color: isSelected
-                      ? AppTheme.primaryColor
-                      : AppTheme.textSecondaryColor,
-                ),
-                label: Text(op.label),
-                selected: isSelected,
-                onSelected: (_) => onSelected(isSelected ? null : op),
-              ),
-            );
-          }),
-        ],
-      ),
+    final accountsProvider = sessionAccountsProvider(widget.session);
+    final accountState = ref.watch(accountsProvider);
+    final accounts = accountState.value ?? const <SessionAccount>[];
+    final owned = accounts.map((account) => account.accountNumber).toSet();
+    final query = (
+      session: widget.session,
+      type: _type,
+      accountNumber: _accountNumber,
+      scope: _scope,
+      search: _search,
     );
-  }
-}
+    final provider = historyProvider(query);
+    final history = ref.watch(provider);
+    final data = history.isLoading ? null : history.asData?.value;
 
-class _BankFilterBar extends StatelessWidget {
-  final List<String> banks;
-  final String? selectedBank;
-  final ValueChanged<String?> onSelected;
-
-  const _BankFilterBar({
-    required this.banks,
-    required this.selectedBank,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 38,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: [
-          FilterChip(
-            key: const Key('bank_filter_all'),
-            label: const Text('Todos los bancos'),
-            selected: selectedBank == null,
-            onSelected: (_) => onSelected(null),
-          ),
-          ...banks.map((bank) {
-            final isSelected = selectedBank == bank;
-            return Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: FilterChip(
-                key: Key('bank_filter_$bank'),
-                avatar: Icon(
-                  Icons.account_balance_rounded,
-                  size: 14,
-                  color: isSelected
-                      ? AppTheme.primaryColor
-                      : AppTheme.tertiaryColor,
-                ),
-                label: Text(bank),
-                selected: isSelected,
-                onSelected: (_) => onSelected(isSelected ? null : bank),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScopeFilterBar extends StatelessWidget {
-  final TransferScope? selectedScope;
-  final ValueChanged<TransferScope?> onSelected;
-
-  const _ScopeFilterBar({
-    required this.selectedScope,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 34,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: [
-          ChoiceChip(
-            key: const Key('scope_filter_all'),
-            label: const Text('Todos los tipos'),
-            selected: selectedScope == null,
-            onSelected: (_) => onSelected(null),
-          ),
-          const SizedBox(width: 8),
-          ChoiceChip(
-            key: const Key('scope_filter_own'),
-            avatar: const Icon(
-              Icons.swap_horiz_rounded,
-              size: 15,
-              color: AppTheme.secondaryColor,
-            ),
-            label: const Text('Entre mis cuentas'),
-            selected: selectedScope == TransferScope.ownAccounts,
-            onSelected: (_) => onSelected(
-              selectedScope == TransferScope.ownAccounts
-                  ? null
-                  : TransferScope.ownAccounts,
-            ),
-          ),
-          const SizedBox(width: 8),
-          ChoiceChip(
-            key: const Key('scope_filter_external'),
-            avatar: const Icon(
-              Icons.person_outline_rounded,
-              size: 15,
-              color: AppTheme.infoColor,
-            ),
-            label: const Text('A otra persona'),
-            selected: selectedScope == TransferScope.externalPerson,
-            onSelected: (_) => onSelected(
-              selectedScope == TransferScope.externalPerson
-                  ? null
-                  : TransferScope.externalPerson,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Tarjeta de movimiento histórico con ruta bancaria clara (`Origen -> Destino`)
-/// e identificador pequeño (`Entre mis cuentas` / `A otra persona`).
-class HistoryTransactionCard extends StatelessWidget {
-  final TransactionRecord record;
-  final String? focusedBank;
-  final VoidCallback onTap;
-
-  const HistoryTransactionCard({
-    super.key,
-    required this.record,
-    required this.focusedBank,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isIncomingForView;
-    final bool isInternalUnfocused;
-
-    if (record.direction == MovementDirection.internalTransfer) {
-      if (focusedBank != null) {
-        isIncomingForView =
-            record.destinationBankName.toLowerCase() ==
-            focusedBank!.toLowerCase();
-        isInternalUnfocused = false;
-      } else {
-        isIncomingForView = false;
-        isInternalUnfocused = true;
-      }
-    } else {
-      isIncomingForView = record.direction.isIncoming;
-      isInternalUnfocused = false;
-    }
-
-    final Color amountColor;
-    final IconData leadingIcon;
-    final String amountPrefix;
-
-    if (isInternalUnfocused) {
-      amountColor = AppTheme.secondaryColor;
-      leadingIcon = Icons.swap_horiz_rounded;
-      amountPrefix = '';
-    } else if (isIncomingForView) {
-      amountColor = AppTheme.successColor;
-      leadingIcon = Icons.arrow_downward_rounded;
-      amountPrefix = '+ ';
-    } else {
-      amountColor = AppTheme.errorColor;
-      leadingIcon = Icons.arrow_upward_rounded;
-      amountPrefix = '- ';
-    }
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppTheme.cardColor,
-          borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-          border: Border.all(color: AppTheme.outlineColor),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          sliver: SliverToBoxAdapter(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 8,
               children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: amountColor.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(leadingIcon, color: amountColor, size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        record.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppTheme.textPrimaryColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '${CurrencyFormatter.formatShortDate(record.createdAt)} · ${record.description}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppTheme.textSecondaryColor,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
+                TextField(
+                  key: const Key('history_search'),
+                  controller: _searchField,
+                  onChanged: _searchChanged,
+                  decoration: InputDecoration(
+                    labelText: 'Buscar por cuenta o referencia',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _search.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Limpiar búsqueda',
+                            onPressed: () {
+                              _searchDelay?.cancel();
+                              _searchField.clear();
+                              setState(() => _search = '');
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                Wrap(
+                  spacing: 8,
                   children: [
-                    Text(
-                      '$amountPrefix${CurrencyFormatter.format(record.amount, record.currency, showCurrencyCode: false)}',
-                      style: TextStyle(
-                        color: amountColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+                    ChoiceChip(
+                      key: const Key('op_filter_all'),
+                      label: const Text('Todas'),
+                      selected: _type == null,
+                      onSelected: (_) => setState(() => _type = null),
                     ),
-                    Text(
-                      record.currency,
-                      style: const TextStyle(
-                        color: AppTheme.textMutedColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                    for (final type in FinancialOperationType.values)
+                      ChoiceChip(
+                        key: ValueKey('op_filter_${type.name}'),
+                        label: Text(type.label),
+                        selected: _type == type,
+                        onSelected: (selected) => setState(() {
+                          _type = selected ? type : null;
+                          if (_type != null &&
+                              _type != FinancialOperationType.transfer) {
+                            _scope = null;
+                          }
+                        }),
                       ),
-                    ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                BankRoutePill(
-                  sourceBank: record.sourceBankName,
-                  destinationBank: record.destinationBankName,
-                  compact: true,
-                ),
-                TransferScopeBadge(scope: record.scope),
-                if (record.hadFee)
-                  _CostAlertBadge(
-                    icon: Icons.receipt_long_outlined,
-                    label:
-                        'Comisión: ${CurrencyFormatter.format(record.feeCharged, record.sourceCurrency)}',
-                    color: AppTheme.warningColor,
+                if (accounts.isNotEmpty) ...[
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(('history_account', _accountNumber)),
+                    initialValue: owned.contains(_accountNumber)
+                        ? _accountNumber
+                        : null,
+                    isExpanded: true,
+                    hint: const Text('Todas las cuentas'),
+                    decoration: const InputDecoration(labelText: 'Cuenta'),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Todas las cuentas'),
+                      ),
+                      for (final account in accounts)
+                        DropdownMenuItem(
+                          value: account.accountNumber,
+                          child: Text(
+                            '${account.maskedNumber} · ${account.currency}',
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => _accountNumber = value),
                   ),
-                if (record.isCrossCurrency)
-                  _CostAlertBadge(
-                    icon: Icons.currency_exchange_rounded,
-                    label:
-                        'FX: ${record.sourceCurrency} → ${record.destinationCurrency}',
-                    color: AppTheme.infoColor,
+                  if (_type == null || _type == FinancialOperationType.transfer)
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        FilterChip(
+                          key: const Key('scope_filter_own'),
+                          label: const Text('Entre mis cuentas'),
+                          selected: _scope == HistoryScope.ownAccounts,
+                          onSelected: (selected) => setState(() {
+                            _scope = selected ? HistoryScope.ownAccounts : null;
+                          }),
+                        ),
+                        FilterChip(
+                          key: const Key('scope_filter_other'),
+                          label: const Text('Con terceros'),
+                          selected: _scope == HistoryScope.otherAccounts,
+                          onSelected: (selected) => setState(() {
+                            _scope = selected
+                                ? HistoryScope.otherAccounts
+                                : null;
+                          }),
+                        ),
+                      ],
+                    ),
+                ] else if (accountState.hasError)
+                  TextButton(
+                    onPressed: () => ref.invalidate(accountsProvider),
+                    child: const Text('Reintentar filtros por cuenta'),
                   ),
               ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CostAlertBadge extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _CostAlertBadge({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
             ),
           ),
-        ],
-      ),
+        ),
+        if (data != null)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList.builder(
+              itemCount: data.items.length,
+              itemBuilder: (context, index) {
+                final movement = data.items[index];
+                return Padding(
+                  key: ValueKey(movement.id),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _MovementCard(movement: movement, owned: owned),
+                );
+              },
+            ),
+          ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          sliver: SliverToBoxAdapter(
+            child: _historyFooter(
+              history,
+              data,
+              onRetry: () {
+                if (_scope != null && accountState.hasError) {
+                  ref.invalidate(accountsProvider);
+                }
+                ref.invalidate(provider);
+              },
+              onMore: ref.read(provider.notifier).loadMore,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _historyFooter(
+    AsyncValue<HistoryData> history,
+    HistoryData? data, {
+    required VoidCallback onRetry,
+    required VoidCallback onMore,
+  }) {
+    if (history.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          semanticsLabel: 'Cargando movimientos',
+        ),
+      );
+    }
+    if (history.hasError || data == null) {
+      return Card(
+        child: ListTile(
+          title: const Text('No pudimos cargar el historial.'),
+          subtitle: TextButton(
+            onPressed: onRetry,
+            child: const Text('Reintentar'),
+          ),
+        ),
+      );
+    }
+
+    final hasFilters =
+        _search.isNotEmpty ||
+        _type != null ||
+        _accountNumber != null ||
+        _scope != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 8,
+      children: [
+        if (data.items.isEmpty && !data.loadingMore && !data.loadMoreFailed)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              data.nextSkip != null
+                  ? 'Sin coincidencias en las páginas consultadas.'
+                  : hasFilters
+                  ? 'No hay movimientos que coincidan con los filtros.'
+                  : 'Todavía no hay movimientos.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        if (data.loadMoreFailed)
+          const Text(
+            'No pudimos cargar más movimientos.',
+            textAlign: TextAlign.center,
+          ),
+        if (data.loadingMore)
+          const Center(
+            child: CircularProgressIndicator(
+              semanticsLabel: 'Cargando más movimientos',
+            ),
+          )
+        else if (data.nextSkip != null)
+          OutlinedButton(
+            onPressed: onMore,
+            child: Text(
+              data.loadMoreFailed
+                  ? 'Reintentar página'
+                  : data.items.isEmpty
+                  ? 'Buscar en más movimientos'
+                  : 'Cargar más movimientos',
+            ),
+          ),
+      ],
     );
   }
 }
 
-class _EmptyHistoryView extends StatelessWidget {
-  final bool hasFilters;
-  final VoidCallback onClearFilters;
+class _MovementCard extends StatelessWidget {
+  const _MovementCard({required this.movement, required this.owned});
 
-  const _EmptyHistoryView({
-    required this.hasFilters,
-    required this.onClearFilters,
-  });
+  final OperationReceipt movement;
+  final Set<String> owned;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    final isTransfer = movement.type == FinancialOperationType.transfer;
+    final sourceIsOwn = owned.contains(movement.sourceAccount);
+    final destinationIsOwn = owned.contains(movement.destinationAccount);
+    final incoming = isTransfer && !sourceIsOwn && destinationIsOwn;
+    final rejected = movement.status == 'ERROR';
+    final title = switch ((
+      isTransfer && !rejected,
+      sourceIsOwn,
+      destinationIsOwn,
+    )) {
+      (true, false, true) => 'Transferencia recibida',
+      (true, true, true) => 'Transferencia entre mis cuentas',
+      (true, true, false) => 'Transferencia enviada',
+      _ => movement.type.label,
+    };
+    final amount = incoming && !rejected
+        ? formatAccountBalance(movement.received, movement.destinationCurrency)
+        : formatAccountBalance(movement.amount, movement.sourceCurrency);
+
+    return Card(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(14),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 6,
           children: [
-            const Icon(
-              Icons.search_off_rounded,
-              size: 48,
-              color: AppTheme.tertiaryColor,
-            ),
-            const SizedBox(height: 12),
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            Text(amount, style: Theme.of(context).textTheme.titleMedium),
             Text(
-              hasFilters
-                  ? 'No encontramos movimientos con esos filtros'
-                  : 'Aún no tienes movimientos registrados',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppTheme.textPrimaryColor,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
+              MaterialLocalizations.of(context)
+                  .formatCompactDate(movement.createdAt.toLocal()),
             ),
-            const SizedBox(height: 6),
+            Wrap(
+              spacing: 12,
+              children: [
+                if (movement.sourceAccount case final account?)
+                  Text('Origen ${maskAccountNumber(account)}'),
+                if (movement.destinationAccount case final account?)
+                  Text('Destino ${maskAccountNumber(account)}'),
+              ],
+            ),
             Text(
-              hasFilters
-                  ? 'Prueba limpiando la búsqueda o cambiando el banco seleccionado.'
-                  : 'Cuando hagas transferencias aparecerán aquí automáticamente.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppTheme.textSecondaryColor,
-                fontSize: 13,
-              ),
+              'Referencia ${movement.id}',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
-            if (hasFilters) ...[
-              const SizedBox(height: 14),
-              TextButton(
-                onPressed: onClearFilters,
-                child: const Text('Limpiar filtros'),
-              ),
-            ],
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                if (rejected) const Chip(label: Text('Rechazada')),
+                if (movement.fee > BigInt.zero)
+                  Chip(
+                    label: Text(
+                      'Comisión ${formatAccountBalance(movement.fee, movement.sourceCurrency)}',
+                    ),
+                  ),
+                if (!rejected &&
+                    movement.sourceCurrency != movement.destinationCurrency)
+                  Chip(
+                    label: Text(
+                      'Conversión ${movement.sourceCurrency} → ${movement.destinationCurrency} · ${movement.rate} · ${formatAccountBalance(movement.received, movement.destinationCurrency)}',
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

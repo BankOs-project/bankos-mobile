@@ -1,306 +1,459 @@
+import 'package:bankos_mobile/core/network/dio_provider.dart';
 import 'package:bankos_mobile/core/theme/app_theme.dart';
-import 'package:bankos_mobile/features/history/presentation/screens/history_screen.dart';
+import 'package:bankos_mobile/features/accounts/presentation/screens/accounts_screen.dart';
+import 'package:bankos_mobile/features/auth/domain/models/auth_models.dart';
+import 'package:bankos_mobile/features/auth/presentation/providers/auth_provider.dart';
+import 'package:bankos_mobile/features/transactions/data/repositories/pending_operations_store.dart';
 import 'package:bankos_mobile/features/transactions/domain/models/transaction_models.dart';
 import 'package:bankos_mobile/features/transactions/presentation/providers/transactions_providers.dart';
 import 'package:bankos_mobile/features/transactions/presentation/screens/summary_screen.dart';
 import 'package:bankos_mobile/features/transactions/presentation/screens/transfer_screen.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
-Widget _buildTestApp({String initialLocation = '/transactions/transfer'}) {
+final _session = AuthSession(
+  accessToken: 'test-token',
+  tokenType: 'bearer',
+  expiresAt: DateTime.utc(2100),
+  userId: 'cliente-1',
+  tenantId: 'andino',
+  role: 'cliente',
+  bankLabel: 'Banco Andino',
+  email: 'cliente@example.com',
+);
+
+enum _Outcome { success, networkLoss, inProgress, rejected }
+
+class _OperationsApi {
+  _OperationsApi({this.outcomes = const [_Outcome.success]}) {
+    dio.interceptors.add(InterceptorsWrapper(onRequest: _request));
+  }
+
+  final List<_Outcome> outcomes;
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api/v1'));
+  final requests = <RequestOptions>[];
+  final mutations = <RequestOptions>[];
+  final journal = PendingOperationsStore(null);
+  bool destinationRejected = false;
+  String balance = '5000.0000';
+
+  void _request(RequestOptions request, RequestInterceptorHandler handler) {
+    requests.add(request);
+    expect(request.headers['Authorization'], 'Bearer test-token');
+
+    void resolve(Map<String, Object?> data, [int status = 200]) =>
+        handler.resolve(
+          Response(
+            requestOptions: request,
+            statusCode: status,
+            data: {'success': true, 'data': data},
+          ),
+        );
+
+    void reject(int status, String code, String message) => handler.reject(
+      DioException(
+        requestOptions: request,
+        type: DioExceptionType.badResponse,
+        response: Response(
+          requestOptions: request,
+          statusCode: status,
+          data: {'success': false, 'internal_code': code, 'message': message},
+        ),
+      ),
+    );
+
+    final path = request.path;
+    if (path == '/accounts') {
+      resolve({
+        'total': 1,
+        'items': [
+          {
+            'tenant_id': _session.tenantId,
+            'owner_id': _session.userId,
+            'account_number': '1000000001',
+            'balance': balance,
+            'currency': 'COP',
+            'status': 'ACTIVE',
+          },
+        ],
+      });
+      return;
+    }
+    if (path == '/accounts/1000000004/destination') {
+      if (destinationRejected) {
+        reject(
+          404,
+          'RESOURCE_NOT_FOUND',
+          'Cuenta destino no disponible en esta institución',
+        );
+      } else {
+        resolve({
+          'account_number': '1000000004',
+          'holder_name': 'Cliente destino',
+          'currency': 'USD',
+        });
+      }
+      return;
+    }
+    final body = request.data as Map<String, String>;
+    if (path == '/transactions/quote') {
+      final type = body['operation_type'];
+      final transfer = type == 'TRANSFER';
+      expect(body['source_account_number'], '1000000001');
+      expect(body['amount'], '100.25');
+      expect(
+        body['destination_account_number'],
+        transfer ? '1000000004' : null,
+      );
+      expect(request.headers.containsKey('Idempotency-Key'), isFalse);
+      resolve({
+        'operation_type': type,
+        'source_currency': 'COP',
+        'destination_currency': transfer ? 'USD' : 'COP',
+        'amount_to_debit': transfer
+            ? '102.2550'
+            : type == 'DEPOSIT'
+            ? '0'
+            : '100.25',
+        'fee_calculated': transfer ? '2.0050' : '0.0000',
+        'exchange_rate_applied': transfer ? '0.000250' : '1',
+        'final_amount_to_receive': transfer ? '0.0251' : '100.25',
+      });
+      return;
+    }
+
+    mutations.add(request);
+    final type = FinancialOperationType.values.singleWhere(
+      (item) => path == '/transactions/${item.endpoint}',
+    );
+    expect(
+      body,
+      type == FinancialOperationType.transfer
+          ? {
+              'source_account_number': '1000000001',
+              'destination_account_number': '1000000004',
+              'amount': '100.25',
+            }
+          : {'account_number': '1000000001', 'amount': '100.25'},
+    );
+    final uuid = RegExp(
+      r'^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$',
+    );
+    expect(request.headers['Idempotency-Key'], matches(uuid));
+    expect(request.headers['X-Correlation-ID'], matches(uuid));
+    expect(
+      request.headers['X-Correlation-ID'],
+      isNot(request.headers['Idempotency-Key']),
+    );
+
+    switch (outcomes[mutations.length - 1]) {
+      case _Outcome.networkLoss:
+        handler.reject(
+          DioException(
+            requestOptions: request,
+            type: DioExceptionType.receiveTimeout,
+          ),
+        );
+      case _Outcome.inProgress:
+        reject(
+          409,
+          'IDEMPOTENCY_IN_PROGRESS',
+          'Transacción en proceso concurrente',
+        );
+      case _Outcome.rejected:
+        reject(400, 'INSUFFICIENT_FUNDS', 'Saldo insuficiente.');
+      case _Outcome.success:
+        balance = '4900.0000';
+        resolve({
+          'id': 'id-confirmado-por-fastapi',
+          'tenant_id': _session.tenantId,
+          'operation_type': type.apiValue,
+          'status': 'SUCCESS',
+          'created_at': '2026-11-19T10:20:00Z',
+          'source_account_number': type == FinancialOperationType.deposit
+              ? null
+              : '1000000001',
+          'destination_account_number': switch (type) {
+            FinancialOperationType.transfer => '1000000004',
+            FinancialOperationType.deposit => '1000000001',
+            FinancialOperationType.withdrawal => null,
+          },
+          'original_amount': '100.2500',
+          'original_currency': 'COP',
+          'fee_charged': type == FinancialOperationType.transfer
+              ? '2.0050'
+              : '0.0000',
+          'converted_amount': type == FinancialOperationType.transfer
+              ? '0.0251'
+              : '100.2500',
+          'destination_currency': type == FinancialOperationType.transfer
+              ? 'USD'
+              : 'COP',
+          'exchange_rate_applied': type == FinancialOperationType.transfer
+              ? '0.000250'
+              : '1',
+          'idempotency_key': request.headers['Idempotency-Key'],
+          'correlation_id': request.headers['X-Correlation-ID'],
+        }, 201);
+    }
+  }
+}
+
+Future<GoRouter> _open(
+  WidgetTester tester,
+  _OperationsApi api, {
+  FinancialOperationType type = FinancialOperationType.transfer,
+  required Future<bool> Function() confirm,
+}) async {
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  addTearDown(api.dio.close);
   final router = GoRouter(
-    initialLocation: initialLocation,
+    initialLocation: '/transactions/transfer',
     routes: [
       GoRoute(
         path: '/transactions/transfer',
-        builder: (_, _) => const TransferScreen(),
+        builder: (_, _) => TransferScreen(initialType: type),
       ),
       GoRoute(
         path: '/transactions/summary',
         builder: (_, _) => const SummaryScreen(),
       ),
-      GoRoute(
-        path: '/history',
-        builder: (_, _) => const HistoryScreen(),
-      ),
-      GoRoute(
-        path: '/dashboard',
-        builder: (_, _) => const Scaffold(body: Text('Dashboard')),
-      ),
-      GoRoute(
-        path: '/operations',
-        builder: (_, _) => const Scaffold(body: Text('Operaciones')),
-      ),
+      GoRoute(path: '/accounts', builder: (_, _) => const AccountsScreen()),
+      GoRoute(path: '/operations', builder: (_, _) => const Scaffold()),
     ],
   );
-
-  return ProviderScope(
-    child: MaterialApp.router(
-      theme: AppTheme.darkTheme,
-      routerConfig: router,
+  addTearDown(router.dispose);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        activeSessionProvider.overrideWithValue(_session),
+        dioProvider.overrideWithValue(api.dio),
+        pendingOperationsStoreProvider.overrideWithValue(api.journal),
+        confirmWithDeviceProvider.overrideWithValue(confirm),
+      ],
+      child: MaterialApp.router(
+        theme: AppTheme.darkTheme,
+        routerConfig: router,
+      ),
     ),
   );
+  await tester.pumpAndSettle();
+  return router;
+}
+
+Future<void> _quote(WidgetTester tester, {bool transfer = true}) async {
+  if (transfer) {
+    await tester.enterText(
+      find.byKey(const Key('destination_account_field')),
+      '1000000004',
+    );
+  }
+  await tester.enterText(find.byKey(const Key('amount_field')), '100,25');
+  final button = find.byKey(const Key('review_transfer_button'));
+  await tester.ensureVisible(button);
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _confirm(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('confirm_operation_button')));
+  await tester.pumpAndSettle();
 }
 
 void main() {
-  test('las transferencias recibidas no aparecen como depósitos', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
+  testWidgets(
+    'reintenta un timeout y un 409 sin cambiar cuerpo ni identificadores',
+    (tester) async {
+      final api = _OperationsApi(
+        outcomes: [_Outcome.networkLoss, _Outcome.inProgress, _Outcome.success],
+      );
+      var deviceConfirmations = 0;
+      final router = await _open(
+        tester,
+        api,
+        confirm: () async {
+          deviceConfirmations++;
+          return true;
+        },
+      );
 
-    final history = container.read(transactionsHistoryProvider);
-    final incoming = history.where(
-      (record) => record.direction == MovementDirection.incoming,
+      await _quote(tester);
+      expect(api.requests.map((r) => r.path), [
+        '/accounts',
+        '/accounts/1000000004/destination',
+        '/transactions/quote',
+      ]);
+      expect(find.text('Cliente destino · •••• 0004'), findsOneWidget);
+      expect(find.text(r'$102,255 COP'), findsOneWidget);
+      expect(find.text(r'$2,005 COP'), findsOneWidget);
+      expect(find.text('1 COP = 0.000250 USD'), findsOneWidget);
+      expect(find.text(r'$0.0251 USD'), findsOneWidget);
+      expect(api.mutations, isEmpty);
+
+      await _confirm(tester);
+      expect(find.text('Operación pendiente'), findsOneWidget);
+      final pending = await api.journal.read(_session);
+      expect(pending, isNotNull);
+
+      router.go('/operations');
+      await tester.pumpAndSettle();
+      router.go('/transactions/transfer');
+      await tester.pumpAndSettle();
+      expect(find.text('Operación pendiente'), findsOneWidget);
+
+      await tester.tap(find.text('Reintentar operación'));
+      await tester.pumpAndSettle();
+      expect(find.text('Operación pendiente'), findsOneWidget);
+      await tester.tap(find.text('Reintentar operación'));
+      await tester.pumpAndSettle();
+
+      expect(deviceConfirmations, 1);
+      expect(api.mutations, hasLength(3));
+      for (final request in api.mutations) {
+        expect(request.data, pending!.body);
+        expect(request.headers['Idempotency-Key'], pending.idempotencyKey);
+        expect(request.headers['X-Correlation-ID'], pending.correlationId);
+      }
+      expect(await api.journal.read(_session), isNull);
+      expect(find.text('Transferencia exitosa'), findsOneWidget);
+      expect(find.text('id-confirmado-por-fastapi'), findsOneWidget);
+
+      router.go('/accounts');
+      await tester.pumpAndSettle();
+      expect(find.text(r'$4.900 COP'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'un rechazo definitivo termina el intento sin mostrar comprobante',
+    (tester) async {
+      final api = _OperationsApi(outcomes: [_Outcome.rejected]);
+      await _open(tester, api, confirm: () async => true);
+      await _quote(tester);
+      await _confirm(tester);
+
+      expect(find.text('Operación rechazada'), findsOneWidget);
+      expect(find.text('Saldo insuficiente.'), findsOneWidget);
+      expect(find.text('Reintentar operación'), findsNothing);
+      expect(find.text('Transferencia exitosa'), findsNothing);
+      expect(await api.journal.read(_session), isNull);
+    },
+  );
+
+  testWidgets('un destino rechazado no llega a cotizar ni a ejecutarse', (
+    tester,
+  ) async {
+    final api = _OperationsApi()..destinationRejected = true;
+    await _open(
+      tester,
+      api,
+      confirm: () async => throw StateError('Confirmación inesperada'),
     );
-    expect(incoming, hasLength(2));
+    await _quote(tester);
     expect(
-      incoming.map((record) => record.operationType),
-      everyElement(FinancialOperationType.transfer),
+      find.text('Cuenta destino no disponible en esta institución'),
+      findsOneWidget,
     );
-
-    container
-        .read(historyOperationFilterProvider.notifier)
-        .setOperation(FinancialOperationType.deposit);
-    expect(container.read(filteredTransactionsProvider), isEmpty);
+    expect(api.requests.map((r) => r.path), [
+      '/accounts',
+      '/accounts/1000000004/destination',
+    ]);
   });
 
-  test('el filtro por banco considera ambos lados del movimiento', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
+  for (final type in [
+    FinancialOperationType.deposit,
+    FinancialOperationType.withdrawal,
+  ]) {
+    testWidgets('${type.label} cotiza y confirma con el contrato de FastAPI', (
+      tester,
+    ) async {
+      final api = _OperationsApi();
+      var deviceConfirmations = 0;
+      await _open(
+        tester,
+        api,
+        type: type,
+        confirm: () async {
+          deviceConfirmations++;
+          return true;
+        },
+      );
+      await _quote(tester, transfer: false);
+      expect(
+        find.text('Cotización de ${type.label.toLowerCase()}'),
+        findsOneWidget,
+      );
+      await _confirm(tester);
+      expect(
+        deviceConfirmations,
+        type == FinancialOperationType.deposit ? 0 : 1,
+      );
+      expect(api.mutations.single.path, '/transactions/${type.endpoint}');
+      expect(
+        find.text(
+          type == FinancialOperationType.deposit
+              ? 'Depósito exitoso'
+              : 'Retiro exitoso',
+        ),
+        findsOneWidget,
+      );
+    });
+  }
 
-    container.read(historyBankFilterProvider.notifier).setBank('Nequi');
-    expect(
-      container.read(filteredTransactionsProvider).map((record) => record.id),
-      ['txn-1005'],
+  testWidgets(
+    'si falla la autenticación del dispositivo el retiro no se envía',
+    (tester) async {
+      final api = _OperationsApi();
+      await _open(
+        tester,
+        api,
+        type: FinancialOperationType.withdrawal,
+        confirm: () async => false,
+      );
+      await _quote(tester, transfer: false);
+      await _confirm(tester);
+      expect(
+        find.text('Confirma con el bloqueo de tu dispositivo para continuar.'),
+        findsOneWidget,
+      );
+      expect(api.mutations, isEmpty);
+      expect(await api.journal.read(_session), isNull);
+    },
+  );
+
+  test('una reapertura recupera el mismo cuerpo y claves solo para su usuario y banco', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    const storage = FlutterSecureStorage();
+    final operation = ConfirmedOperation(
+      const OperationDraft(
+        type: FinancialOperationType.deposit,
+        accountNumber: '1000000001',
+        amount: '100.25',
+      ),
     );
+    await PendingOperationsStore(storage).save(_session, operation);
 
-    container.read(historyBankFilterProvider.notifier).setBank('Davivienda');
-    final incoming = container.read(filteredTransactionsProvider).single;
-    expect(incoming.id, 'txn-1004');
-    expect(incoming.tenantName, 'BankOs');
+    final reopened = PendingOperationsStore(storage);
+    final restored = await reopened.read(_session);
+    expect(restored?.toJson(), operation.toJson());
+    final otherBank = AuthSession(
+      accessToken: 'other-token',
+      tokenType: 'bearer',
+      expiresAt: DateTime.utc(2100),
+      userId: _session.userId,
+      tenantId: 'caribe',
+      role: _session.role,
+      bankLabel: 'Cooperativa Caribe',
+      email: _session.email,
+    );
+    expect(await reopened.read(otherBank), isNull);
+    await reopened.clear(_session);
+    expect(await reopened.read(_session), isNull);
   });
-
-  testWidgets(
-    'flujo completo: transferencia con PIN erróneo, huella visual, PIN 1234, comprobante e historial',
-    (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 2.0;
-      addTearDown(tester.view.reset);
-
-      await tester.pumpWidget(_buildTestApp());
-      await tester.pumpAndSettle();
-
-      // Ingresar llave destino y monto en COP.
-      await tester.enterText(
-        find.byKey(const Key('destination_key_field')),
-        '@pedro.perez',
-      );
-      await tester.enterText(find.byKey(const Key('amount_field')), '75000');
-      await tester.enterText(
-        find.byKey(const Key('description_field')),
-        'Pago prueba',
-      );
-      await tester.pumpAndSettle();
-
-      // Verifica transparencia de comisión $0 COP.
-      expect(find.text('\$0 COP'), findsOneWidget);
-
-      // Abrir BottomSheet de confirmación.
-      final reviewBtn = find.byKey(const Key('review_transfer_button'));
-      await tester.ensureVisible(reviewBtn);
-      await tester.tap(reviewBtn);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Verifica tu envío'), findsOneWidget);
-
-      // Probar pestaña visual de Huella.
-      await tester.tap(find.text('Huella'));
-      await tester.pumpAndSettle();
-      expect(find.text('Huella no disponible aún'), findsOneWidget);
-
-      // Volver a PIN.
-      await tester.tap(find.text('Autorizar con PIN'));
-      await tester.pumpAndSettle();
-
-      // Probar PIN incorrecto (0000).
-      for (var i = 0; i < 4; i++) {
-        await tester.tap(find.byKey(const Key('pin_key_0')));
-        await tester.pump();
-      }
-      await tester.pumpAndSettle();
-      expect(find.text('PIN incorrecto. Intenta nuevamente.'), findsOneWidget);
-
-      // Ingresar PIN correcto (1234).
-      for (final digit in ['1', '2', '3', '4']) {
-        await tester.tap(find.byKey(Key('pin_key_$digit')));
-        await tester.pump();
-      }
-      await tester.pumpAndSettle();
-
-      // Verifica llegada a SummaryScreen con comprobante real.
-      expect(find.text('Transferencia exitosa'), findsOneWidget);
-      expect(find.text('\$75.000 COP'), findsWidgets);
-      expect(find.byKey(const Key('share_receipt_button')), findsOneWidget);
-
-      // Ir al historial y comprobar que aparece la nueva transacción.
-      final historyBtn = find.byKey(const Key('go_to_history_button'));
-      await tester.ensureVisible(historyBtn);
-      await tester.tap(historyBtn);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Envío a @pedro.perez'), findsOneWidget);
-      expect(find.text('A otra persona'), findsWidgets);
-
-      // Filtrar por "Entre mis cuentas".
-      await tester.tap(find.byKey(const Key('scope_filter_own')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Envío a @pedro.perez'), findsNothing);
-      expect(find.text('Traslado entre mis cuentas'), findsOneWidget);
-
-      // Filtrar por el banco de las cuentas propias (haciendo scroll horizontal si hace falta).
-      final ownBankChip = find.byKey(const Key('bank_filter_BankOs'));
-      await tester.ensureVisible(ownBankChip);
-      await tester.pumpAndSettle();
-      await tester.tap(ownBankChip);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Movimientos · BankOs'), findsOneWidget);
-      expect(find.text('Traslado entre mis cuentas'), findsOneWidget);
-    },
-  );
-
-  testWidgets(
-    'flujo entre mis cuentas: descuenta origen, abona destino y crea comprobante propio',
-    (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 2.0;
-      addTearDown(tester.view.reset);
-
-      await tester.pumpWidget(_buildTestApp());
-      await tester.pumpAndSettle();
-
-      // Cambiar a "Entre mis cuentas".
-      await tester.tap(find.byKey(const Key('scope_tab_ownAccounts')));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byKey(const Key('amount_field')), '100000');
-      await tester.pumpAndSettle();
-
-      final reviewBtn = find.byKey(const Key('review_transfer_button'));
-      await tester.ensureVisible(reviewBtn);
-      await tester.tap(reviewBtn);
-      await tester.pumpAndSettle();
-
-      for (final digit in ['1', '2', '3', '4']) {
-        await tester.tap(find.byKey(Key('pin_key_$digit')));
-        await tester.pump();
-      }
-      await tester.pumpAndSettle();
-
-      expect(find.text('Transferencia exitosa'), findsOneWidget);
-      expect(find.text('Entre mis cuentas'), findsWidgets);
-      expect(find.text('\$100.000 COP'), findsWidgets);
-    },
-  );
-
-  testWidgets(
-    'flujo de depósito: abona saldo a cuenta seleccionada y emite comprobante de depósito',
-    (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 2.0;
-      addTearDown(tester.view.reset);
-
-      await tester.pumpWidget(_buildTestApp());
-      await tester.pumpAndSettle();
-
-      // Cambiar operación a Depósito.
-      await tester.tap(find.byKey(const Key('op_tab_deposit')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Depositar Dinero'), findsOneWidget);
-      expect(find.text('Cuenta destino (abono)'), findsOneWidget);
-
-      await tester.enterText(find.byKey(const Key('amount_field')), '150000');
-      await tester.pumpAndSettle();
-
-      final reviewBtn = find.byKey(const Key('review_transfer_button'));
-      await tester.ensureVisible(reviewBtn);
-      await tester.tap(reviewBtn);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Resumen de Depósito'), findsOneWidget);
-
-      for (final digit in ['1', '2', '3', '4']) {
-        await tester.tap(find.byKey(Key('pin_key_$digit')));
-        await tester.pump();
-      }
-      await tester.pumpAndSettle();
-
-      expect(find.text('Depósito exitoso'), findsOneWidget);
-      expect(find.text('\$150.000 COP'), findsWidgets);
-    },
-  );
-
-  testWidgets(
-    'la simulación del 504 conserva la llave hasta confirmar la operación local',
-    (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 2.0;
-      addTearDown(tester.view.reset);
-
-      await tester.pumpWidget(_buildTestApp());
-      await tester.pumpAndSettle();
-
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(TransferScreen)),
-      );
-      final initialCount = container.read(transactionsHistoryProvider).length;
-
-      await tester.enterText(
-        find.byKey(const Key('destination_key_field')),
-        '3001234567',
-      );
-      await tester.enterText(find.byKey(const Key('amount_field')), '30000');
-      await tester.pumpAndSettle();
-
-      final reviewBtn = find.byKey(const Key('review_transfer_button'));
-      await tester.ensureVisible(reviewBtn);
-      await tester.tap(reviewBtn);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Simulación de reintento'), findsOneWidget);
-      final referenceFinder = find.textContaining('Demostración local · Llave: ');
-      final reference = tester.widget<Text>(referenceFinder).data!;
-      final demoKey = reference.split('Llave: ').last;
-
-      await tester.tap(find.text('Simular fallo de red'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Error 504 simulado'), findsOneWidget);
-      expect(find.text(reference), findsOneWidget);
-      for (final digit in ['1', '2', '3', '4']) {
-        await tester.tap(find.byKey(Key('pin_key_$digit')));
-      }
-      await tester.pumpAndSettle();
-      expect(container.read(transactionsHistoryProvider), hasLength(initialCount));
-
-      await tester.tap(find.text('Simular reintento con la misma llave'));
-      await tester.pumpAndSettle();
-      expect(find.text(reference), findsOneWidget);
-
-      // Completar PIN
-      for (final digit in ['1', '2', '3', '4']) {
-        await tester.tap(find.byKey(Key('pin_key_$digit')));
-        await tester.pump();
-      }
-      await tester.pumpAndSettle();
-
-      expect(find.text('Transferencia exitosa'), findsOneWidget);
-      final records = container.read(transactionsHistoryProvider);
-      expect(records, hasLength(initialCount + 1));
-      expect(records.first.idempotencyKey, demoKey);
-    },
-  );
 }

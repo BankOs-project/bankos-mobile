@@ -8,9 +8,7 @@ class OperationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Operaciones'),
-      ),
+      appBar: AppBar(title: const Text('Operaciones')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -28,6 +26,25 @@ class OperationsScreen extends ConsumerWidget {
                 subtitle: const Text('Enviar a otra cuenta'),
                 trailing: const Icon(Icons.arrow_forward),
                 onTap: () => context.go('/transactions/transfer'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.add_circle_outline),
+                title: const Text('Depositar dinero'),
+                trailing: const Icon(Icons.arrow_forward),
+                onTap: () => context.go('/transactions/transfer?type=deposit'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.money_outlined),
+                title: const Text('Retirar dinero'),
+                trailing: const Icon(Icons.arrow_forward),
+                onTap: () =>
+                    context.go('/transactions/transfer?type=withdrawal'),
               ),
             ),
             const SizedBox(height: 8),

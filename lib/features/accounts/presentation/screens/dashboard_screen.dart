@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -14,7 +13,8 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(activeSessionProvider);
-    final customerName = ref.watch(customerNameProvider).asData?.value;
+    final profile = ref.watch(customerNameProvider);
+    final customerName = profile.isLoading ? null : profile.asData?.value;
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -40,10 +40,7 @@ class DashboardScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'Cerrar sesión',
             icon: const Icon(Icons.logout_rounded),
-            onPressed: () {
-              ref.read(authProvider.notifier).logout();
-              context.go('/login');
-            },
+            onPressed: () => ref.read(authProvider.notifier).logout(),
           ),
         ],
       ),
@@ -79,13 +76,6 @@ class DashboardScreen extends ConsumerWidget {
               const SizedBox(height: 20),
               const DashboardQuickActions(),
               const SizedBox(height: 24),
-              Text(
-                'Datos financieros de demostración',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 8),
               const DashboardKpiSection(),
               const SizedBox(height: 24),
               const DashboardChartsSection(),

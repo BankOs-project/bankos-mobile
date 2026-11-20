@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../domain/models/public_bank.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, required this.bank});
+
+  final PublicBank bank;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -16,7 +19,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   static const String _logoAssetPath = 'resources/images/bankos_logo.png';
 
   final _formKey = GlobalKey<FormState>();
-  final _tenantController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
@@ -24,21 +26,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   void dispose() {
-    _tenantController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
-  }
-
-  String? _validateTenant(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) {
-      return 'Ingresa el identificador de tu institución (slug)';
-    }
-    if (trimmed.contains(' ')) {
-      return 'El slug no debe contener espacios (ej: banco-andino)';
-    }
-    return null;
   }
 
   String? _validateEmail(String? value) {
@@ -70,8 +60,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    final success = await ref.read(authProvider.notifier).login(
-          tenantSlug: _tenantController.text,
+    final success = await ref
+        .read(authProvider.notifier)
+        .login(
+          bank: widget.bank,
           email: _emailController.text,
           password: _passwordController.text,
         );
@@ -116,13 +108,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 28),
                         _LoginCard(
                           formKey: _formKey,
-                          tenantController: _tenantController,
+                          bankName: widget.bank.name,
                           emailController: _emailController,
                           passwordController: _passwordController,
                           obscurePassword: _obscurePassword,
                           isLoading: authState.isLoading,
                           errorMessage: authState.errorMessage,
-                          validateTenant: _validateTenant,
                           validateEmail: _validateEmail,
                           validatePassword: _validatePassword,
                           onFieldChanged: _clearApiErrorIfNeeded,
@@ -132,7 +123,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             });
                           },
                           onDismissError: _clearApiErrorIfNeeded,
+                          onChangeBank: () {
+                            _clearApiErrorIfNeeded();
+                            context.go('/banks');
+                          },
                           onSubmit: _onLogin,
+                          onCreateUser: () {
+                            _clearApiErrorIfNeeded();
+                            context.push('/register', extra: widget.bank);
+                          },
                         ),
                         const SizedBox(height: 24),
                         const _SecurityFooter(),
@@ -281,35 +280,37 @@ class _BrandHeader extends StatelessWidget {
 class _LoginCard extends StatelessWidget {
   const _LoginCard({
     required this.formKey,
-    required this.tenantController,
+    required this.bankName,
     required this.emailController,
     required this.passwordController,
     required this.obscurePassword,
     required this.isLoading,
     required this.errorMessage,
-    required this.validateTenant,
     required this.validateEmail,
     required this.validatePassword,
     required this.onFieldChanged,
     required this.onTogglePasswordVisibility,
     required this.onDismissError,
+    required this.onChangeBank,
     required this.onSubmit,
+    required this.onCreateUser,
   });
 
   final GlobalKey<FormState> formKey;
-  final TextEditingController tenantController;
+  final String bankName;
   final TextEditingController emailController;
   final TextEditingController passwordController;
   final bool obscurePassword;
   final bool isLoading;
   final String? errorMessage;
-  final FormFieldValidator<String> validateTenant;
   final FormFieldValidator<String> validateEmail;
   final FormFieldValidator<String> validatePassword;
   final VoidCallback onFieldChanged;
   final VoidCallback onTogglePasswordVisibility;
   final VoidCallback onDismissError;
+  final VoidCallback onChangeBank;
   final VoidCallback onSubmit;
+  final VoidCallback onCreateUser;
 
   @override
   Widget build(BuildContext context) {
@@ -343,28 +344,20 @@ class _LoginCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Accede a tus cuentas indicando tu institución financiera y credenciales.',
+              Text(
+                bankName,
                 style: TextStyle(
                   color: AppTheme.textSecondaryColor,
                   fontSize: 13.5,
                   height: 1.4,
                 ),
               ),
-              const SizedBox(height: 22),
-              TextFormField(
-                controller: tenantController,
-                enabled: !isLoading,
-                textInputAction: TextInputAction.next,
-                autocorrect: false,
-                style: const TextStyle(color: AppTheme.textPrimaryColor),
-                decoration: const InputDecoration(
-                  labelText: 'Institución (Tenant / Slug)',
-                  hintText: 'ej. banco-andino',
-                  prefixIcon: Icon(Icons.account_balance_outlined),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: isLoading ? null : onChangeBank,
+                  child: const Text('Cambiar banco'),
                 ),
-                validator: validateTenant,
-                onChanged: (_) => onFieldChanged(),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -431,6 +424,10 @@ class _LoginCard extends StatelessWidget {
                 isLoading: isLoading,
                 onPressed: isLoading ? null : onSubmit,
               ),
+              TextButton(
+                onPressed: isLoading ? null : onCreateUser,
+                child: const Text('Crear usuario'),
+              ),
             ],
           ),
         ),
@@ -440,10 +437,7 @@ class _LoginCard extends StatelessWidget {
 }
 
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({
-    required this.message,
-    required this.onDismiss,
-  });
+  const _ErrorBanner({required this.message, required this.onDismiss});
 
   final String message;
   final VoidCallback onDismiss;
@@ -455,9 +449,7 @@ class _ErrorBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.errorColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(AppTheme.radiusInput),
-        border: Border.all(
-          color: AppTheme.errorColor.withValues(alpha: 0.45),
-        ),
+        border: Border.all(color: AppTheme.errorColor.withValues(alpha: 0.45)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
