@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:bankos_mobile/core/network/dio_provider.dart';
 import 'package:bankos_mobile/core/router/app_router.dart';
@@ -13,6 +14,7 @@ import 'package:bankos_mobile/features/auth/domain/models/public_bank.dart';
 import 'package:bankos_mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:bankos_mobile/features/auth/presentation/screens/bank_selector_screen.dart';
 import 'package:bankos_mobile/features/auth/presentation/screens/login_screen.dart';
+import 'package:bankos_mobile/features/auth/presentation/screens/session_startup_screen.dart';
 import 'package:bankos_mobile/main.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -329,6 +331,98 @@ void main() {
     await _tapText(tester, 'Volver al login');
   });
 
+  testWidgets('muestra los cinco bancos nuevos y resuelve sus avatares', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    const validUrl = 'https://logos.example.com/bancolombia.png';
+    const failedUrl = 'https://logos.example.com/daviplata.png';
+    final image = Completer<ImageInfo>();
+    final failedImage = Completer<ImageInfo>();
+    final imageCache = PaintingBinding.instance.imageCache;
+    for (final (url, result) in [(validUrl, image), (failedUrl, failedImage)]) {
+      final key = NetworkImage(url);
+      imageCache.putIfAbsent(
+        key,
+        () => OneFrameImageStreamCompleter(result.future),
+      );
+      addTearDown(() => imageCache.evict(key));
+    }
+
+    const names = ['Bancolombia', 'Nu', 'DaviPlata', 'Uno', 'Falabella'];
+    final banks = [
+      for (final (index, name) in names.indexed)
+        {
+          'bank_id': 'public-bank-$index',
+          'name': name,
+          'logo_url': switch (name) {
+            'Bancolombia' => validUrl,
+            'DaviPlata' => failedUrl,
+            _ => null,
+          },
+        },
+    ];
+    final container = ProviderContainer(
+      overrides: [sessionStoreProvider.overrideWithValue(null)],
+    );
+    addTearDown(container.dispose);
+    container.read(dioProvider).httpClientAdapter = _FakeHttpClientAdapter((
+      options,
+    ) async {
+      expect(options.path, '/banks');
+      return _jsonBody({'success': true, 'data': banks}, 200);
+    });
+    await tester.pumpWidget(_restoringApp(container));
+    await tester.pumpAndSettle();
+
+    Finder tile(String name) => find.widgetWithText(ListTile, name);
+    Finder fallback(String name) => find.descendant(
+      of: tile(name),
+      matching: find.byIcon(Icons.account_balance_outlined),
+    );
+
+    for (final name in names) {
+      expect(tile(name), findsOneWidget);
+      expect(
+        find.descendant(of: tile(name), matching: find.byType(CircleAvatar)),
+        findsOneWidget,
+      );
+      expect(fallback(name), findsOneWidget);
+    }
+
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawColor(Colors.blue, BlendMode.src);
+    final picture = recorder.endRecording();
+    image.complete(ImageInfo(image: picture.toImageSync(160, 40)));
+    picture.dispose();
+    failedImage.completeError(StateError('404 de prueba'));
+    await tester.pumpAndSettle();
+
+    final loaded = find.descendant(
+      of: tile('Bancolombia'),
+      matching: find.byType(RawImage),
+    );
+    final logo = tester.widget<RawImage>(loaded);
+    expect(logo.image?.width, 160);
+    expect(logo.image?.height, 40);
+    expect(logo.fit, BoxFit.contain);
+    expect(fallback('Bancolombia'), findsNothing);
+    expect(fallback('Nu'), findsOneWidget);
+    expect(fallback('DaviPlata'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'DÁVIPLATA');
+    await tester.pumpAndSettle();
+    expect(tile('Bancolombia'), findsNothing);
+    expect(tile('DaviPlata'), findsOneWidget);
+    await tester.tap(fallback('DaviPlata'));
+    await tester.pumpAndSettle();
+    final login = tester.widget<LoginScreen>(find.byType(LoginScreen));
+    expect(login.bank.name, 'DaviPlata');
+    expect(login.bank.id, banks[2]['bank_id']);
+  });
+
   testWidgets('busca sin acentos, selecciona y cambia de banco', (
     tester,
   ) async {
@@ -347,7 +441,8 @@ void main() {
     });
     await tester.pumpWidget(_restoringApp(container));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 750));
+    await tester.pump();
     expect(find.bySemanticsLabel('Cargando bancos'), findsOneWidget);
 
     waiting.complete(_jsonBody({'success': false}, 503));
@@ -377,6 +472,7 @@ void main() {
     await tester.ensureVisible(find.text('Cambiar banco'));
     await tester.tap(find.text('Cambiar banco'));
     await tester.pumpAndSettle();
+    expect(find.byType(SessionStartupScreen), findsNothing);
     await tester.tap(find.text(_caribeBank.name));
     await tester.pumpAndSettle();
     expect(find.text(_caribeBank.name), findsOneWidget);
@@ -390,6 +486,119 @@ void main() {
   group('Restauración de sesión', () {
     const store = SecureSessionStore(FlutterSecureStorage());
     setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
+    testWidgets('sin sesión anima una vez y luego abre el selector', (
+      tester,
+    ) async {
+      final container = _restoringContainer(store, (options) async {
+        fail('No se esperaba una solicitud a ${options.path}');
+      });
+      addTearDown(container.dispose);
+      final intro = find.byType(SessionStartupScreen);
+      final opacity = find.descendant(
+        of: intro,
+        matching: find.byType(Opacity),
+      );
+      final scale = find.descendant(
+        of: opacity,
+        matching: find.byType(Transform),
+      );
+      final halo = find.descendant(
+        of: intro,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is DecoratedBox &&
+              widget.decoration is BoxDecoration &&
+              (widget.decoration as BoxDecoration).gradient is RadialGradient,
+        ),
+      );
+
+      await tester.pumpWidget(_restoringApp(container));
+      await tester.pump();
+      expect(tester.widget<Opacity>(opacity).opacity, 0);
+      expect(tester.widget<Transform>(scale).transform.entry(0, 0), 0.86);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.widget<Opacity>(opacity).opacity, inExclusiveRange(0, 1));
+      expect(
+        tester.widget<Transform>(scale).transform.entry(0, 0),
+        inExclusiveRange(0.86, 1),
+      );
+      expect(halo, findsNothing);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.widget<Opacity>(opacity).opacity, 1);
+      expect(halo, findsOneWidget);
+      expect(find.byType(BankSelectorScreen), findsNothing);
+      await tester.pump(const Duration(milliseconds: 199));
+      expect(intro, findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pumpAndSettle();
+      expect(intro, findsNothing);
+      expect(find.byType(BankSelectorScreen), findsOneWidget);
+
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+        await tester.pump();
+      }
+      expect(intro, findsNothing);
+      expect(find.byType(BankSelectorScreen), findsOneWidget);
+    });
+
+    testWidgets('una sesión válida espera el final de la intro', (
+      tester,
+    ) async {
+      await store.save(
+        _savedSession(expiresAt: DateTime.now().add(const Duration(hours: 1))),
+      );
+      final paths = <String>[];
+      final container = _restoringContainer(store, (options) async {
+        paths.add(options.path);
+        return options.path == '/auth/me' ? _activeProfile() : _emptyAccounts();
+      });
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(_restoringApp(container));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(paths, ['/auth/me']);
+      expect(container.read(activeSessionProvider), isNotNull);
+      expect(find.byType(SessionStartupScreen), findsOneWidget);
+      expect(find.text('¡Hola, Juan Pérez!'), findsNothing);
+      await tester.pumpAndSettle();
+      expect(find.text('¡Hola, Juan Pérez!'), findsOneWidget);
+      expect(paths, ['/auth/me', '/accounts']);
+      await tester.tap(find.byTooltip('Cerrar sesión'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SessionStartupScreen), findsNothing);
+      expect(find.byType(BankSelectorScreen), findsOneWidget);
+    });
+
+    testWidgets(
+      'movimiento reducido omite la animación y la espera de 700 ms',
+      (tester) async {
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(disableAnimations: true);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+        final container = _restoringContainer(store, (options) async {
+          fail('No se esperaba una solicitud a ${options.path}');
+        });
+        addTearDown(container.dispose);
+
+        await tester.pumpWidget(_restoringApp(container));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.byType(SessionStartupScreen), findsNothing);
+        expect(find.byType(BankSelectorScreen), findsOneWidget);
+      },
+    );
 
     testWidgets('reapertura verifica perfil antes de habilitar cuentas', (
       tester,
@@ -414,8 +623,12 @@ void main() {
 
       await tester.pumpWidget(_restoringApp(container));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(find.text('Verificando sesión…'), findsNothing);
+      expect(paths, ['/auth/me']);
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Verificando sesión…'), findsOneWidget);
+      expect(find.bySemanticsLabel('BankOS'), findsOneWidget);
       expect(container.read(authTokenProvider), isNull);
       expect(paths, ['/auth/me']);
 
@@ -510,19 +723,26 @@ void main() {
         addTearDown(container.dispose);
 
         await tester.pumpWidget(_restoringApp(container));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 450));
+        expect(find.byType(SessionStartupScreen), findsOneWidget);
+        expect(find.text('No pudimos verificar tu sesión.'), findsNothing);
         await tester.pumpAndSettle();
         expect(find.text('No pudimos verificar tu sesión.'), findsOneWidget);
+        expect(find.text('Borrar sesión e ir al ingreso'), findsOneWidget);
         expect(find.text('¡Hola, Juan Pérez!'), findsNothing);
         expect(container.read(authTokenProvider), isNull);
         expect((await store.read())?.accessToken, 'stored-token');
 
         online = true;
         await tester.tap(find.text('Reintentar'));
+        await tester.pump();
         await tester.pumpAndSettle();
         expect(find.text('¡Hola, Juan Pérez!'), findsOneWidget);
 
         await tester.tap(find.byTooltip('Cerrar sesión'));
         await tester.pumpAndSettle();
+        expect(find.byType(SessionStartupScreen), findsNothing);
         expect(find.byType(BankSelectorScreen), findsOneWidget);
         expect(await store.read(), isNull);
 
