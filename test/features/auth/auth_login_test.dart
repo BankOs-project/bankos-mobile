@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:bankos_mobile/core/network/dio_provider.dart';
 import 'package:bankos_mobile/core/router/app_router.dart';
 import 'package:bankos_mobile/core/theme/app_theme.dart';
+import 'package:bankos_mobile/core/theme/bank_surface_card.dart';
 import 'package:bankos_mobile/core/theme/bank_theme.dart';
 import 'package:bankos_mobile/features/accounts/presentation/screens/main_shell_screen.dart';
 import 'package:bankos_mobile/features/accounts/presentation/providers/session_accounts_provider.dart';
@@ -1301,7 +1302,21 @@ void main() {
       expect((await store.read())?.bankLogoUrl.toString(), andinoLogo);
       expect(find.text(r'$1.500,25 COP'), findsOneWidget);
       expect(find.text('Finanzas'), findsOneWidget);
-      expect(find.text('Saldo actual'), findsOneWidget);
+      for (final title in ['Saldo actual', 'Ingresos', 'Gastos']) {
+        final card = find.ancestor(
+          of: find.text(title),
+          matching: find.byType(BankSurfaceCard),
+        );
+        expect(card, findsOneWidget);
+        expect(
+          tester
+              .widget<Card>(
+                find.descendant(of: card, matching: find.byType(Card)),
+              )
+              .color,
+          BankPalette.andino.brandColor,
+        );
+      }
 
       await _openDashboardMenu(tester);
       await _tapText(tester, 'Configuración general');

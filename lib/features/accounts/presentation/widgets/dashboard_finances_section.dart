@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/theme/bank_surface_card.dart';
 import '../../../../core/theme/bank_theme.dart';
 
 import '../../../auth/domain/models/auth_models.dart';
@@ -202,8 +203,7 @@ class _FinanceTotals extends StatelessWidget {
           ('Ingresos', null, (FinancialCurrencySummary total) => total.income),
           ('Gastos', null, (FinancialCurrencySummary total) => total.expenses),
         ])
-          Card(
-            color: subtitle == null ? null : brand?.fill,
+          BankSurfaceCard(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -212,28 +212,18 @@ class _FinanceTotals extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: text.titleMedium?.copyWith(
-                      color: subtitle == null ? null : brand?.onFill,
-                    ),
+                    style: text.titleMedium?.copyWith(color: brand?.onFill),
                   ),
                   if (subtitle != null)
                     Text(
                       subtitle,
                       style: text.bodySmall?.copyWith(color: brand?.onFill),
                     ),
-                  if (totals.isEmpty)
-                    Text(
-                      '—',
-                      style: TextStyle(
-                        color: subtitle == null ? null : brand?.onFill,
-                      ),
-                    ),
+                  if (totals.isEmpty) const Text('—'),
                   for (final total in totals)
                     Text(
                       formatAccountBalance(amount(total), total.currency),
-                      style: text.titleLarge?.copyWith(
-                        color: subtitle == null ? null : brand?.onFill,
-                      ),
+                      style: text.titleLarge?.copyWith(color: brand?.onFill),
                     ),
                 ],
               ),

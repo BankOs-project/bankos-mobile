@@ -28,7 +28,7 @@ la sesión. Una institución sin paleta configurada utiliza BankOS.
 
 ## Ajustes de contraste
 
-Las cabeceras, los bloques principales y la pestaña activa usan una
+Las cabeceras, los bloques principales (incluidas las tres tarjetas de Finanzas) y la pestaña activa usan una
 superficie sólida de marca. Bancolombia usa el amarillo `#FDDA24` de la
 referencia visual del Dashboard, Nu el morado `#820AD1`, DaviPlata el
 rojo `#FF0000` y Falabella el verde `#3B9326`. Andino, Caribe y Uno usan
