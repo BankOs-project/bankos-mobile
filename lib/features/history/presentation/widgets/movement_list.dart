@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/bank_surface_card.dart';
+import '../../../../core/theme/bank_theme.dart';
 import '../../../accounts/domain/models/session_account.dart';
 import '../../../transactions/domain/models/transaction_models.dart';
 import '../providers/history_provider.dart';
@@ -175,7 +177,9 @@ class _MovementCard extends StatelessWidget {
         ? formatAccountBalance(movement.received, movement.destinationCurrency)
         : formatAccountBalance(movement.amount, movement.sourceCurrency);
 
-    return Card(
+    final theme = Theme.of(context);
+    final brand = theme.extension<BankSurfaceColors>();
+    return BankSurfaceCard(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -190,13 +194,20 @@ class _MovementCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: brand?.onFill,
+                      ),
                     ),
                   ),
                   if (onTap != null) const Icon(Icons.chevron_right_rounded),
                 ],
               ),
-              Text(amount, style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                amount,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: brand?.onFill,
+                ),
+              ),
               Text(
                 MaterialLocalizations.of(context)
                     .formatCompactDate(movement.createdAt.toLocal()),
@@ -212,7 +223,9 @@ class _MovementCard extends StatelessWidget {
               ),
               Text(
                 'Referencia ${movement.id}',
-                style: Theme.of(context).textTheme.bodySmall,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: brand?.onFill,
+                ),
               ),
               Wrap(
                 spacing: 6,

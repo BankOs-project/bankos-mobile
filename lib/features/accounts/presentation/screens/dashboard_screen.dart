@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/bank_surface_card.dart';
+import '../../../../core/theme/bank_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/bank_logo.dart';
 import '../widgets/dashboard_finances_section.dart';
@@ -17,6 +19,7 @@ class DashboardScreen extends ConsumerWidget {
     final profile = ref.watch(customerNameProvider);
     final customerName = profile.isLoading ? null : profile.asData?.value;
     final theme = Theme.of(context);
+    final brand = theme.extension<BankSurfaceColors>();
 
     return Scaffold(
       appBar: AppBar(
@@ -60,23 +63,26 @@ class DashboardScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Card(
+              BankSurfaceCard(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
                       CircleAvatar(
-                        backgroundColor: theme.colorScheme.primary.withValues(
-                          alpha: 0.18,
-                        ),
-                        foregroundColor: theme.colorScheme.primary,
+                        backgroundColor:
+                            (brand?.onFill ?? theme.colorScheme.primary)
+                                .withValues(alpha: 0.12),
+                        foregroundColor:
+                            brand?.onFill ?? theme.colorScheme.primary,
                         child: const Icon(Icons.person_outline_rounded),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           '¡Hola, ${customerName ?? session?.email ?? 'cliente'}!',
-                          style: theme.textTheme.titleLarge,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: brand?.onFill,
+                          ),
                         ),
                       ),
                     ],

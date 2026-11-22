@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../accounts/presentation/providers/bottom_nav_provider.dart';
-
-class TransferModeScreen extends ConsumerWidget {
+class TransferModeScreen extends StatelessWidget {
   const TransferModeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transferir'),
@@ -17,7 +14,6 @@ class TransferModeScreen extends ConsumerWidget {
             if (context.canPop()) {
               context.pop();
             } else {
-              ref.read(bottomNavIndexProvider.notifier).state = 2;
               context.go('/operations');
             }
           },

@@ -347,8 +347,20 @@ void main() {
     await tester.enterText(search, '');
     await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
-    await tap(find.text('Referencia rechazado'));
-    expect(find.text('Rechazada'), findsOneWidget);
+    final rejected = find.text('Rechazada');
+    await tester.scrollUntilVisible(
+      rejected,
+      160,
+      scrollable: find.ancestor(
+        of: find.byType(MovementList),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(rejected.hitTestable(), findsOneWidget);
+    await tester.tap(rejected);
+    await tester.pumpAndSettle();
+    expect(rejected, findsOneWidget);
     expect(find.text('Comprobante'), findsNothing);
 
     router.go('/accounts/$foreign');

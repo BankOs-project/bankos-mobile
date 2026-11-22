@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/theme/bank_theme.dart';
+
 import '../../../auth/domain/models/auth_models.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../transactions/domain/models/financial_summary.dart';
@@ -177,7 +179,9 @@ class _FinanceTotals extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final text = theme.textTheme;
+    final brand = theme.extension<BankSurfaceColors>();
     final noFlows = totals.every(
       (total) => total.income == BigInt.zero && total.expenses == BigInt.zero,
     );
@@ -199,19 +203,37 @@ class _FinanceTotals extends StatelessWidget {
           ('Gastos', null, (FinancialCurrencySummary total) => total.expenses),
         ])
           Card(
+            color: subtitle == null ? null : brand?.fill,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 spacing: 6,
                 children: [
-                  Text(title, style: text.titleMedium),
-                  if (subtitle != null) Text(subtitle, style: text.bodySmall),
-                  if (totals.isEmpty) const Text('—'),
+                  Text(
+                    title,
+                    style: text.titleMedium?.copyWith(
+                      color: subtitle == null ? null : brand?.onFill,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: text.bodySmall?.copyWith(color: brand?.onFill),
+                    ),
+                  if (totals.isEmpty)
+                    Text(
+                      '—',
+                      style: TextStyle(
+                        color: subtitle == null ? null : brand?.onFill,
+                      ),
+                    ),
                   for (final total in totals)
                     Text(
                       formatAccountBalance(amount(total), total.currency),
-                      style: text.titleLarge,
+                      style: text.titleLarge?.copyWith(
+                        color: subtitle == null ? null : brand?.onFill,
+                      ),
                     ),
                 ],
               ),

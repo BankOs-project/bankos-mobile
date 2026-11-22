@@ -28,11 +28,19 @@ la sesión. Una institución sin paleta configurada utiliza BankOS.
 
 ## Ajustes de contraste
 
+Las cabeceras, los bloques principales y la pestaña activa usan una
+superficie sólida de marca. Bancolombia usa el amarillo `#FDDA24` de la
+referencia visual del Dashboard, Nu el morado `#820AD1`, DaviPlata el
+rojo `#FF0000` y Falabella el verde `#3B9326`. Andino, Caribe y Uno usan
+su acento Claro como superficie de demo o provisional. Para esos fondos se
+elige negro o blanco según luminancia. El fondo general y las pestañas
+inactivas conservan el color Claro u Oscuro de BankOS.
+
 Los textos, bordes y superficies son colores funcionales de la app. En modo
 oscuro se mantienen las bases de BankOS `#041126`, `#0D1F3C` y `#142A4F`.
-En modo claro se usan `#F5F8FC`, `#FFFFFF` y `#E9EFF6`. Las secciones
-bancarias tiñen esas bases con su acento al 3,5 %, 2,5 % y 5,5 %,
-respectivamente. Los acentos secundarios y terciarios de cada banco se
+En modo claro se usan `#F5F8FC`, `#FFFFFF` y `#E9EFF6`. Las tarjetas
+neutras y los campos de las secciones bancarias tiñen sus bases con su
+acento al 2,5 % y 5,5 %, respectivamente. Los acentos secundarios y terciarios de cada banco se
 mezclan con el color del texto principal al 18 % y 32 %.
 
 | Rol funcional | Claro | Oscuro | Origen |

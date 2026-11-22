@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../../accounts/presentation/providers/bottom_nav_provider.dart';
 import '../../../auth/domain/models/auth_models.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/transaction_models.dart';
@@ -93,7 +92,6 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
   }
 
   void _openOperations() {
-    ref.read(bottomNavIndexProvider.notifier).state = 2;
     context.go('/operations');
   }
 
@@ -115,7 +113,6 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
             if (context.canPop()) {
               context.pop();
             } else {
-              ref.read(bottomNavIndexProvider.notifier).state = 3;
               context.go('/history');
             }
           },
@@ -172,10 +169,6 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                             child: OutlinedButton.icon(
                               key: const Key('go_to_history_button'),
                               onPressed: () {
-                                ref
-                                        .read(bottomNavIndexProvider.notifier)
-                                        .state =
-                                    3;
                                 context.go('/history');
                               },
                               icon: const Icon(Icons.history_rounded, size: 18),
@@ -187,10 +180,6 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                             child: OutlinedButton.icon(
                               key: const Key('go_to_dashboard_button'),
                               onPressed: () {
-                                ref
-                                        .read(bottomNavIndexProvider.notifier)
-                                        .state =
-                                    0;
                                 context.go('/dashboard');
                               },
                               icon: const Icon(Icons.home_outlined, size: 18),
