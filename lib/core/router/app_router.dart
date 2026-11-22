@@ -15,6 +15,7 @@ import '../../features/accounts/presentation/screens/accounts_screen.dart';
 import '../../features/accounts/presentation/screens/account_detail_screen.dart';
 import '../../features/operations/presentation/screens/operations_screen.dart';
 import '../../features/history/presentation/screens/history_screen.dart';
+import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/settings/presentation/screens/dashboard_menu_screen.dart';
 import '../../features/settings/presentation/screens/general_settings_screen.dart';
 import '../../features/transactions/domain/models/transaction_models.dart';
@@ -73,6 +74,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/menu',
         builder: (context, state) => const DashboardMenuScreen(),
         routes: [
+          GoRoute(
+            path: 'profile',
+            builder: (context, state) => const ProfileScreen(),
+          ),
           GoRoute(
             path: 'settings',
             builder: (context, state) => const GeneralSettingsScreen(),

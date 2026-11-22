@@ -49,7 +49,11 @@ class DashboardMenuScreen extends ConsumerWidget {
                   ListTile(
                     leading: const Icon(Icons.person_outline_rounded),
                     title: const Text('Perfil'),
-                    onTap: () => _unavailable(context),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      ScaffoldMessenger.of(context).clearSnackBars();
+                      context.push('/menu/profile');
+                    },
                   ),
                   const Divider(),
                   ListTile(
