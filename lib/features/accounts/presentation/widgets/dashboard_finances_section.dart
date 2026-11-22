@@ -108,18 +108,6 @@ class DashboardFinancesSection extends ConsumerWidget {
                 ? null
                 : (value) => filters.selectAccount(value == '' ? null : value),
           ),
-        if (visibleAccounts == null && accounts.isLoading)
-          const Text('Cargando cuentas…'),
-        if (accounts.hasError)
-          Row(
-            children: [
-              const Expanded(child: Text('No pudimos cargar tus cuentas.')),
-              TextButton(
-                onPressed: () => ref.invalidate(accountsProvider),
-                child: const Text('Reintentar'),
-              ),
-            ],
-          ),
         Text(
           'Del ${_formatDay(period.firstDay)} al ${_formatDay(period.lastDay)} · Bogotá',
           style: text.bodyMedium,

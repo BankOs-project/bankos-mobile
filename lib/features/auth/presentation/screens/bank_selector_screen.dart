@@ -100,7 +100,10 @@ class _BankSelectorScreenState extends ConsumerState<BankSelectorScreen> {
                                 horizontal: 16,
                                 vertical: 8,
                               ),
-                              leading: BankLogo(logoUrl: bank.logoUrl),
+                              leading: BankLogo(
+                                bankName: bank.name,
+                                logoUrl: bank.logoUrl,
+                              ),
                               title: Text(bank.name),
                               trailing: const Icon(Icons.chevron_right_rounded),
                               onTap: auth.isLoading

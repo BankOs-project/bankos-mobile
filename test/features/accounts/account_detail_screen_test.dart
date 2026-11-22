@@ -223,7 +223,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     final router = container.read(appRouterProvider);
-    router.go('/accounts');
+    router.go('/dashboard');
     await tester.pumpAndSettle();
 
     Future<void> tap(Finder target) async {
@@ -232,7 +232,33 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await tap(find.text('•••• 0001'));
+    final carousel = find.byType(PageView);
+    final orderedBlocks = [
+      find.text('¡Hola, Cliente!'),
+      find.text('Crea tu llave Bre-B'),
+      carousel,
+      find.byKey(const Key('quick_action_transfer')),
+      find.text('Finanzas'),
+    ];
+    for (var index = 1; index < orderedBlocks.length; index++) {
+      expect(
+        tester.getTopLeft(orderedBlocks[index]).dy,
+        greaterThan(tester.getTopLeft(orderedBlocks[index - 1]).dy),
+      );
+    }
+    expect(find.text('Próximamente'), findsOneWidget);
+    await tap(find.text('Crea tu llave Bre-B'));
+    expect(router.routeInformationProvider.value.uri.path, '/dashboard');
+    expect(find.text('Cuenta 1 de 4'), findsOneWidget);
+    expect(find.text('Ahorros'), findsOneWidget);
+    await tester.ensureVisible(carousel);
+    await tester.drag(carousel, const Offset(-340, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Cuenta 2 de 4'), findsOneWidget);
+    expect(find.text(r'$105.50 USD'), findsOneWidget);
+    await tester.drag(carousel, const Offset(340, 0));
+    await tester.pumpAndSettle();
+    await tap(find.descendant(of: carousel, matching: find.text('•••• 0001')));
     expect(find.text('Detalle de cuenta'), findsOneWidget);
     expect(find.text(first), findsOneWidget);
     expect(find.text(r'$105,5 COP'), findsOneWidget);
@@ -270,6 +296,12 @@ void main() {
     router.pop();
     await tester.pumpAndSettle();
     expect(listings, greaterThan(previousListings));
+    expect(
+      find.descendant(of: carousel, matching: find.text('INACTIVA')),
+      findsOneWidget,
+    );
+    router.go('/accounts');
+    await tester.pumpAndSettle();
     expect(find.widgetWithText(ListTile, '•••• 0001'), findsOneWidget);
     expect(
       find.descendant(

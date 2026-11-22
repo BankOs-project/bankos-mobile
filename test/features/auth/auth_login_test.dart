@@ -9,6 +9,7 @@ import 'package:bankos_mobile/core/theme/app_theme.dart';
 import 'package:bankos_mobile/core/theme/bank_surface_card.dart';
 import 'package:bankos_mobile/core/theme/bank_theme.dart';
 import 'package:bankos_mobile/features/accounts/presentation/screens/main_shell_screen.dart';
+import 'package:bankos_mobile/features/accounts/presentation/widgets/dashboard_accounts_carousel.dart';
 import 'package:bankos_mobile/features/accounts/presentation/providers/session_accounts_provider.dart';
 import 'package:bankos_mobile/features/accounts/presentation/providers/dashboard_finances_provider.dart';
 import 'package:bankos_mobile/features/auth/data/repositories/auth_repository.dart';
@@ -427,15 +428,27 @@ void main() {
       of: tile(name),
       matching: find.byIcon(Icons.account_balance_outlined),
     );
+    Finder localLogo(String bank, String asset) => find.descendant(
+      of: tile(bank),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Image &&
+            widget.image == AssetImage('resources/images/bank_$asset.png'),
+      ),
+    );
 
     for (final name in names) {
       expect(tile(name), findsOneWidget);
       expect(
-        find.descendant(of: tile(name), matching: find.byType(CircleAvatar)),
+        find.descendant(of: tile(name), matching: find.byType(BankLogo)),
         findsOneWidget,
       );
-      expect(fallback(name), findsOneWidget);
     }
+    expect(fallback('Bancolombia'), findsOneWidget);
+    expect(fallback('DaviPlata'), findsOneWidget);
+    expect(localLogo('Nu', 'nu'), findsOneWidget);
+    expect(localLogo('Falabella', 'falabella'), findsOneWidget);
+    expect(find.text('UNO'), findsOneWidget);
 
     final recorder = ui.PictureRecorder();
     ui.Canvas(recorder).drawColor(Colors.blue, BlendMode.src);
@@ -454,18 +467,21 @@ void main() {
     expect(logo.image?.height, 40);
     expect(logo.fit, BoxFit.contain);
     expect(fallback('Bancolombia'), findsNothing);
-    expect(fallback('Nu'), findsOneWidget);
-    expect(fallback('DaviPlata'), findsOneWidget);
+    expect(localLogo('Nu', 'nu'), findsOneWidget);
+    expect(localLogo('DaviPlata', 'daviplata'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'DÁVIPLATA');
     await tester.pumpAndSettle();
     expect(tile('Bancolombia'), findsNothing);
     expect(tile('DaviPlata'), findsOneWidget);
-    await tester.tap(fallback('DaviPlata'));
+    await tester.tap(localLogo('DaviPlata', 'daviplata'));
     await tester.pumpAndSettle();
     final login = tester.widget<LoginScreen>(find.byType(LoginScreen));
     expect(login.bank.name, 'DaviPlata');
     expect(login.bank.id, banks[2]['bank_id']);
+    final loginLogo = tester.widget<BankLogo>(find.byType(BankLogo));
+    expect(loginLogo.bankName, 'DaviPlata');
+    expect(loginLogo.logoUrl.toString(), failedUrl);
   });
 
   testWidgets('busca sin acentos, selecciona y cambia de banco', (
@@ -1044,6 +1060,54 @@ void main() {
   });
 
   group('LoginScreen', () {
+    testWidgets('centra ambos logos sobre el formulario en ambos temas', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      for (final (width, theme, bank) in [
+        (
+          320.0,
+          AppTheme.lightTheme,
+          const PublicBank(id: '32', name: 'Bancolombia'),
+        ),
+        (320.0, AppTheme.darkTheme, const PublicBank(id: '33', name: 'Nu')),
+        (
+          520.0,
+          AppTheme.lightTheme,
+          const PublicBank(id: '32', name: 'Bancolombia'),
+        ),
+        (520.0, AppTheme.darkTheme, const PublicBank(id: '33', name: 'Nu')),
+      ]) {
+        tester.view.physicalSize = Size(width, 900);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [sessionStoreProvider.overrideWithValue(null)],
+            child: MaterialApp(
+              theme: theme,
+              home: LoginScreen(key: ValueKey(bank.id), bank: bank),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final block = find.byKey(const Key('login_brand_logos'));
+        final logo = find.descendant(
+          of: block,
+          matching: find.byType(BankLogo),
+        );
+        final pair = tester.getRect(block);
+        expect(pair.center.dx, closeTo(width / 2, 1));
+        expect(pair.width, lessThan(170));
+        expect(tester.getRect(logo).right, closeTo(pair.right, 1));
+        expect(tester.widget<BankLogo>(logo).bankName, bank.name);
+        expect(
+          tester.getTopLeft(find.byType(TextFormField).first).dy,
+          greaterThan(pair.bottom),
+        );
+        expect(tester.takeException(), isNull);
+      }
+    });
+
     Widget buildTestApp({required AuthRepository repository}) {
       final router = GoRouter(
         initialLocation: '/login',
@@ -1300,7 +1364,7 @@ void main() {
       expect(container.read(authTokenProvider), 'token-banco-andino');
       expect((await store.read())?.bankLabel, _andinoBank.name);
       expect((await store.read())?.bankLogoUrl.toString(), andinoLogo);
-      expect(find.text(r'$1.500,25 COP'), findsOneWidget);
+      expect(find.text(r'$1.500,25 COP'), findsNWidgets(2));
       expect(find.text('Finanzas'), findsOneWidget);
       for (final title in ['Saldo actual', 'Ingresos', 'Gastos']) {
         final card = find.ancestor(
@@ -1351,7 +1415,7 @@ void main() {
       container.invalidate(sessionAccountsProvider(firstSession));
       await tester.pump();
       await tester.pump();
-      expect(find.text(r'$1.500,25 COP'), findsOneWidget);
+      expect(find.text(r'$1.500,25 COP'), findsWidgets);
       await _logoutFromMenu(tester);
       expect(find.byType(BankSelectorScreen), findsOneWidget);
       expect(container.read(authTokenProvider), isNull);
@@ -1375,7 +1439,7 @@ void main() {
       await tester.tap(find.text('Reintentar'));
       await tester.pump();
       await tester.pump();
-      expect(find.text('Cargando cuentas…'), findsOneWidget);
+      expect(find.bySemanticsLabel('Cargando cuentas'), findsOneWidget);
       lateAndino.complete(
         accounts([
           account('banco-andino', '1234564589', '8888', 'COP', 'ACTIVE'),
@@ -1390,7 +1454,14 @@ void main() {
         ]),
       );
       await tester.pumpAndSettle();
-      expect(find.text('€9.75 EUR'), findsOneWidget);
+      expect(find.text('€9.75 EUR'), findsNWidgets(2));
+      expect(
+        find.descendant(
+          of: find.byType(DashboardAccountsCarousel),
+          matching: find.textContaining(' de '),
+        ),
+        findsNothing,
+      );
       expect(find.text(r'$8.888 COP'), findsNothing);
       expect(
         accountsTokens,
@@ -1425,7 +1496,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(OperationsScreen), findsOneWidget);
       expect(activeAccent(), BankPalette.caribe.lightAccent);
-      router.go('/history');
+      router.go('/dashboard');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('quick_action_deposit')));
+      await tester.pumpAndSettle();
+      expect(
+        router.routeInformationProvider.value.uri.queryParameters['type'],
+        'deposit',
+      );
+      router.go('/dashboard');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('quick_action_history')));
       await tester.pumpAndSettle();
       expect(find.text('Todavía no hay movimientos.'), findsOneWidget);
       expect(activeAccent(), BankPalette.caribe.lightAccent);
