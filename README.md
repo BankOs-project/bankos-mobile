@@ -36,10 +36,12 @@ La verificación habilita el ingreso manual al mismo banco.
 
 ## Operaciones
 
-El destino de una transferencia se valida por número dentro del banco de la
-sesión. FastAPI cotiza el débito, la comisión, la tasa de cambio y el importe
-recibido antes de confirmar. En retiros y transferencias, la app pide la
-biometría o la credencial configurada en el dispositivo.
+**Transferir** abre el selector de modalidades. **Mismo banco** valida el
+número de destino dentro del banco de la sesión. **Otro banco** toma el banco
+del directorio y cotiza una transferencia simulada. FastAPI devuelve el
+desglose y un `quote_id` para confirmar cada transferencia. Si la cotización
+vence o cambia, el usuario debe revisar y confirmar otra. En retiros y
+transferencias, la app pide la biometría o la credencial del dispositivo.
 
 Si falla la red o se pierde la respuesta después de confirmar, la operación
 queda pendiente. Al reintentar se envían el mismo cuerpo, `Idempotency-Key` y
@@ -48,9 +50,9 @@ y solo se recupera al autenticarse con el mismo usuario y banco. El reintento
 está disponible durante 24 horas desde la confirmación. Después de ese plazo,
 la pantalla muestra el identificador para consultar el estado con el banco.
 
-## Historial
+## Movimientos
 
-El historial consulta `GET /api/v1/transactions` con el token de la sesión.
+La pantalla Movimientos consulta `GET /api/v1/transactions` con el token de la sesión.
 FastAPI aplica los filtros de cuenta y tipo de operación. La búsqueda por
 cuenta o referencia y el alcance de las transferencias se aplican a medida
 que se consultan las páginas. **Buscar en más movimientos** permite continuar

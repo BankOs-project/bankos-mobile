@@ -15,12 +15,14 @@ class LoginRequest {
     required this.bankName,
     required this.email,
     required this.password,
+    this.bankLogoUrl,
   });
 
   final String bankId;
   final String bankName;
   final String email;
   final String password;
+  final Uri? bankLogoUrl;
 
   Map<String, dynamic> toJson() {
     return {
@@ -41,6 +43,8 @@ class AuthSession {
     required this.role,
     required this.bankLabel,
     required this.email,
+    this.bankLogoUrl,
+    this.bankId,
   });
 
   final String accessToken;
@@ -51,6 +55,8 @@ class AuthSession {
   final String role;
   final String bankLabel;
   final String email;
+  final Uri? bankLogoUrl;
+  final String? bankId;
 
   bool get isExpired => !expiresAt.isAfter(DateTime.now());
 
@@ -58,6 +64,8 @@ class AuthSession {
     Map<String, dynamic> json, {
     required String bankLabel,
     required String email,
+    Uri? bankLogoUrl,
+    String? bankId,
     DateTime? expiresAt,
   }) {
     final accessToken = json['access_token'] as String?;
@@ -91,6 +99,8 @@ class AuthSession {
       tenantId: tenantId,
       role: (json['role'] as String?) ?? 'cliente',
       bankLabel: bankLabel,
+      bankLogoUrl: bankLogoUrl,
+      bankId: bankId,
       email: email.trim().toLowerCase(),
     );
   }

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_theme.dart';
-
 /// Fila clave-valor alineada para comprobantes y hojas de confirmación.
 class ReceiptKeyValueRow extends StatelessWidget {
   final String label;
@@ -19,6 +17,7 @@ class ReceiptKeyValueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -28,8 +27,8 @@ class ReceiptKeyValueRow extends StatelessWidget {
             flex: 4,
             child: Text(
               label,
-              style: const TextStyle(
-                color: AppTheme.textSecondaryColor,
+              style: TextStyle(
+                color: colors.onSurfaceVariant,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
@@ -42,7 +41,7 @@ class ReceiptKeyValueRow extends StatelessWidget {
               value,
               textAlign: TextAlign.end,
               style: TextStyle(
-                color: valueColor ?? AppTheme.textPrimaryColor,
+                color: valueColor ?? colors.onSurface,
                 fontSize: 13,
                 fontWeight: boldValue ? FontWeight.w700 : FontWeight.w600,
               ),
@@ -71,11 +70,13 @@ class TicketDashedDivider extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(
             dashCount,
-            (_) => const SizedBox(
+            (_) => SizedBox(
               width: dashWidth,
               height: 1.2,
               child: DecoratedBox(
-                decoration: BoxDecoration(color: AppTheme.outlineColor),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
             ),
           ),

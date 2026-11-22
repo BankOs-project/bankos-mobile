@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_theme.dart';
 import '../../domain/models/public_bank.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/bank_logo.dart';
 
 class BankSelectorScreen extends ConsumerStatefulWidget {
   const BankSelectorScreen({super.key});
@@ -100,7 +100,7 @@ class _BankSelectorScreenState extends ConsumerState<BankSelectorScreen> {
                                 horizontal: 16,
                                 vertical: 8,
                               ),
-                              leading: _BankLogo(bank: bank),
+                              leading: BankLogo(logoUrl: bank.logoUrl),
                               title: Text(bank.name),
                               trailing: const Icon(Icons.chevron_right_rounded),
                               onTap: auth.isLoading
@@ -123,38 +123,6 @@ class _BankSelectorScreenState extends ConsumerState<BankSelectorScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _BankLogo extends StatelessWidget {
-  const _BankLogo({required this.bank});
-
-  final PublicBank bank;
-
-  @override
-  Widget build(BuildContext context) {
-    const fallback = Icon(
-      Icons.account_balance_outlined,
-      color: AppTheme.primaryColor,
-    );
-    final url = bank.logoUrl;
-    return CircleAvatar(
-      backgroundColor: AppTheme.surfaceVariantColor,
-      child: url == null
-          ? fallback
-          : ClipOval(
-              child: Image.network(
-                url.toString(),
-                width: 32,
-                height: 32,
-                fit: BoxFit.contain,
-                excludeFromSemantics: true,
-                frameBuilder: (_, child, frame, _) =>
-                    frame == null ? fallback : child,
-                errorBuilder: (_, _, _) => fallback,
-              ),
-            ),
     );
   }
 }

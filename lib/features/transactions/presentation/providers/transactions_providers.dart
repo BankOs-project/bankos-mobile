@@ -64,13 +64,28 @@ class OperationsNotifier extends AsyncNotifier<OperationState> {
     return OperationState(pending: pending);
   }
 
-  Future<void> submit(AuthSession session, OperationDraft draft) async {
+  Future<void> submit(
+    AuthSession session,
+    OperationDraft draft, {
+    OperationQuote? quote,
+  }) async {
     final current = state.asData?.value;
     if (!_isCurrent(session) ||
         state.isLoading ||
         current == null ||
         current.sending ||
         current.pending != null) {
+      return;
+    }
+
+    final transfer = draft.type == FinancialOperationType.transfer;
+    if (transfer && (quote?.id == null || quote!.expired)) {
+      state = const AsyncData(
+        OperationState(
+          message:
+              'La cotización venció. Solicita una nueva antes de confirmar.',
+        ),
+      );
       return;
     }
 
@@ -94,7 +109,19 @@ class OperationsNotifier extends AsyncNotifier<OperationState> {
       }
     }
 
-    final operation = ConfirmedOperation(draft);
+    if (transfer && quote!.expired) {
+      state = const AsyncData(
+        OperationState(
+          message:
+              'La cotización venció. Solicita una nueva antes de confirmar.',
+        ),
+      );
+      return;
+    }
+    final operation = ConfirmedOperation(
+      draft,
+      quoteId: transfer ? quote!.id : null,
+    );
     state = AsyncData(OperationState(pending: operation, sending: true));
     try {
       await ref.read(pendingOperationsStoreProvider).save(session, operation);

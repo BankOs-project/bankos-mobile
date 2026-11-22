@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/app_theme.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../widgets/dashboard_charts_section.dart';
-import '../widgets/dashboard_kpi_section.dart';
+import '../../../auth/presentation/widgets/bank_logo.dart';
+import '../widgets/dashboard_finances_section.dart';
 import '../widgets/dashboard_quick_actions.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -19,10 +20,19 @@ class DashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          session?.bankLabel ?? 'BankOs',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            BankLogo(logoUrl: session?.bankLogoUrl),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                session?.bankLabel ?? 'BankOs',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
         actions: [
           IconButton(
@@ -38,9 +48,9 @@ class DashboardScreen extends ConsumerWidget {
             },
           ),
           IconButton(
-            tooltip: 'Cerrar sesión',
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: () => ref.read(authProvider.notifier).logout(),
+            tooltip: 'Abrir menú',
+            icon: const Icon(Icons.menu_rounded),
+            onPressed: () => context.push('/menu'),
           ),
         ],
       ),
@@ -56,10 +66,10 @@ class DashboardScreen extends ConsumerWidget {
                   child: Row(
                     children: [
                       CircleAvatar(
-                        backgroundColor: AppTheme.primaryColor.withValues(
+                        backgroundColor: theme.colorScheme.primary.withValues(
                           alpha: 0.18,
                         ),
-                        foregroundColor: AppTheme.primaryColor,
+                        foregroundColor: theme.colorScheme.primary,
                         child: const Icon(Icons.person_outline_rounded),
                       ),
                       const SizedBox(width: 12),
@@ -76,9 +86,7 @@ class DashboardScreen extends ConsumerWidget {
               const SizedBox(height: 20),
               const DashboardQuickActions(),
               const SizedBox(height: 24),
-              const DashboardKpiSection(),
-              const SizedBox(height: 24),
-              const DashboardChartsSection(),
+              if (session != null) DashboardFinancesSection(session: session),
             ],
           ),
         ),

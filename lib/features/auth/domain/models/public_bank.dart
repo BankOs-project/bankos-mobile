@@ -14,20 +14,22 @@ class PublicBank {
         name.trim().isEmpty) {
       throw const FormatException('Banco inválido en el directorio.');
     }
-    final logo = json['logo_url'];
-    final uri = logo is String ? Uri.tryParse(logo) : null;
     return PublicBank(
       id: id,
       name: name,
-      logoUrl:
-          uri != null &&
-              (uri.scheme == 'https' || uri.scheme == 'http') &&
-              uri.host.isNotEmpty &&
-              uri.userInfo.isEmpty
-          ? uri
-          : null,
+      logoUrl: parseBankLogoUrl(json['logo_url']),
     );
   }
+}
+
+Uri? parseBankLogoUrl(Object? value) {
+  final uri = value is String ? Uri.tryParse(value) : null;
+  return uri != null &&
+          (uri.scheme == 'https' || uri.scheme == 'http') &&
+          uri.host.isNotEmpty &&
+          uri.userInfo.isEmpty
+      ? uri
+      : null;
 }
 
 String normalizeBankSearch(String value) {

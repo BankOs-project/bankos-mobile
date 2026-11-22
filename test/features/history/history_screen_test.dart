@@ -270,7 +270,7 @@ void main() {
       });
       await _open(tester, api);
       await tester.pumpAndSettle();
-      expect(find.text('No pudimos cargar el historial.'), findsOneWidget);
+      expect(find.text('No pudimos cargar los movimientos.'), findsOneWidget);
       await _tap(tester, find.text('Reintentar'));
       await _tap(tester, find.text('Cargar más movimientos'));
 

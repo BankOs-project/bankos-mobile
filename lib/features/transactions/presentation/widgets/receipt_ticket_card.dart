@@ -13,20 +13,21 @@ class ReceiptTicketCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final ticket = Card(
       child: Container(
         decoration: BoxDecoration(
-          gradient: AppTheme.surfaceGradient,
+          gradient: AppTheme.surfaceGradient(theme),
           borderRadius: BorderRadius.circular(AppTheme.radiusCard),
         ),
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(
+            Icon(
               Icons.check_circle_outline,
               size: 48,
-              color: AppTheme.successColor,
+              color: theme.colorScheme.primary,
             ),
             const SizedBox(height: 12),
             Text(

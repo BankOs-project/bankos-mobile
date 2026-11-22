@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class OperationsScreen extends ConsumerWidget {
+class OperationsScreen extends StatelessWidget {
   const OperationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Operaciones')),
       body: Padding(
@@ -25,7 +24,7 @@ class OperationsScreen extends ConsumerWidget {
                 title: const Text('Transferir Dinero'),
                 subtitle: const Text('Enviar a otra cuenta'),
                 trailing: const Icon(Icons.arrow_forward),
-                onTap: () => context.go('/transactions/transfer'),
+                onTap: () => context.push('/transactions/transfer'),
               ),
             ),
             const SizedBox(height: 8),
@@ -46,21 +45,6 @@ class OperationsScreen extends ConsumerWidget {
                 onTap: () =>
                     context.go('/transactions/transfer?type=withdrawal'),
               ),
-            ),
-            const SizedBox(height: 8),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.receipt),
-                title: const Text('Comprobante'),
-                subtitle: const Text('Ver resumen reciente'),
-                trailing: const Icon(Icons.arrow_forward),
-                onTap: () => context.go('/transactions/summary'),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => context.go('/dashboard'),
-              child: const Text('Volver al Dashboard'),
             ),
           ],
         ),

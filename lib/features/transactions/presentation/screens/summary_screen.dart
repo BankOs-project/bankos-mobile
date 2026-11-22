@@ -7,14 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../../../core/theme/app_theme.dart';
 import '../../../accounts/presentation/providers/bottom_nav_provider.dart';
+import '../../../auth/domain/models/auth_models.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/transaction_models.dart';
 import '../providers/transactions_providers.dart';
 import '../widgets/receipt_ticket_card.dart';
 
+typedef HistoricalReceipt = ({AuthSession session, OperationReceipt receipt});
+
 class SummaryScreen extends ConsumerStatefulWidget {
-  const SummaryScreen({super.key});
+  const SummaryScreen({super.key, this.historicalReceipt});
+
+  final HistoricalReceipt? historicalReceipt;
 
   @override
   ConsumerState<SummaryScreen> createState() => _SummaryScreenState();
@@ -69,8 +74,12 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
     final renderObject = _receiptBoundaryKey.currentContext?.findRenderObject();
     if (renderObject is! RenderRepaintBoundary) return null;
     final image = await renderObject.toImage(pixelRatio: 3.0);
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return byteData?.buffer.asUint8List();
+    try {
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } finally {
+      image.dispose();
+    }
   }
 
   Future<void> _copyReceiptText(OperationReceipt record) async {
@@ -83,9 +92,19 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
     );
   }
 
+  void _openOperations() {
+    ref.read(bottomNavIndexProvider.notifier).state = 2;
+    context.go('/operations');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final record = ref.watch(activeReceiptProvider);
+    final selected = widget.historicalReceipt;
+    final record = selected == null
+        ? ref.watch(activeReceiptProvider)
+        : identical(selected.session, ref.watch(activeSessionProvider))
+        ? selected.receipt
+        : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -113,9 +132,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
       ),
       body: SafeArea(
         child: record == null
-            ? _EmptyReceiptState(
-                onNewTransfer: () => context.go('/transactions/transfer'),
-              )
+            ? _EmptyReceiptState(onNewTransfer: _openOperations)
             : SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -132,12 +149,12 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                           ? null
                           : () => _shareReceipt(record),
                       icon: _isSharing
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: AppTheme.onPrimaryColor,
+                                color: Theme.of(context).colorScheme.onPrimary,
                               ),
                             )
                           : const Icon(Icons.share_rounded),
@@ -147,42 +164,48 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                             : 'Compartir comprobante',
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            key: const Key('go_to_history_button'),
-                            onPressed: () {
-                              ref.read(bottomNavIndexProvider.notifier).state =
-                                  3;
-                              context.go('/history');
-                            },
-                            icon: const Icon(Icons.history_rounded, size: 18),
-                            label: const Text('Historial'),
+                    if (selected == null) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              key: const Key('go_to_history_button'),
+                              onPressed: () {
+                                ref
+                                        .read(bottomNavIndexProvider.notifier)
+                                        .state =
+                                    3;
+                                context.go('/history');
+                              },
+                              icon: const Icon(Icons.history_rounded, size: 18),
+                              label: const Text('Movimientos'),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            key: const Key('go_to_dashboard_button'),
-                            onPressed: () {
-                              ref.read(bottomNavIndexProvider.notifier).state =
-                                  0;
-                              context.go('/dashboard');
-                            },
-                            icon: const Icon(Icons.home_outlined, size: 18),
-                            label: const Text('Inicio'),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              key: const Key('go_to_dashboard_button'),
+                              onPressed: () {
+                                ref
+                                        .read(bottomNavIndexProvider.notifier)
+                                        .state =
+                                    0;
+                                context.go('/dashboard');
+                              },
+                              icon: const Icon(Icons.home_outlined, size: 18),
+                              label: const Text('Inicio'),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton.icon(
-                      onPressed: () => context.go('/transactions/transfer'),
-                      icon: const Icon(Icons.send_rounded, size: 18),
-                      label: const Text('Realizar otra operación'),
-                    ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: _openOperations,
+                        icon: const Icon(Icons.send_rounded, size: 18),
+                        label: const Text('Realizar otra operación'),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -198,34 +221,28 @@ class _EmptyReceiptState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.receipt_long_outlined,
               size: 56,
-              color: AppTheme.tertiaryColor,
+              color: colors.onSurfaceVariant,
             ),
             const SizedBox(height: 14),
             const Text(
               'Aún no hay comprobantes',
-              style: TextStyle(
-                color: AppTheme.textPrimaryColor,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Cuando el servidor confirme una operación, podrás consultar su comprobante aquí.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: AppTheme.textSecondaryColor,
-                fontSize: 13,
-              ),
+              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
