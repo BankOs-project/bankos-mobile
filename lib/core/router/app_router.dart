@@ -80,7 +80,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
       ShellRoute(
-        builder: (context, state, child) => MainShellScreen(child: child),
+        builder: (context, state, child) =>
+            MainShellScreen(location: state.uri.path, child: child),
         routes: [
           GoRoute(
             path: '/dashboard',

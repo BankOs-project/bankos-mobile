@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/bank_surface_card.dart';
+
 class OperationsScreen extends StatelessWidget {
   const OperationsScreen({super.key});
 
@@ -18,7 +20,7 @@ class OperationsScreen extends StatelessWidget {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            Card(
+            BankSurfaceCard(
               child: ListTile(
                 leading: const Icon(Icons.send),
                 title: const Text('Transferir Dinero'),
@@ -28,7 +30,7 @@ class OperationsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Card(
+            BankSurfaceCard(
               child: ListTile(
                 leading: const Icon(Icons.add_circle_outline),
                 title: const Text('Depositar dinero'),
@@ -37,7 +39,7 @@ class OperationsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Card(
+            BankSurfaceCard(
               child: ListTile(
                 leading: const Icon(Icons.money_outlined),
                 title: const Text('Retirar dinero'),

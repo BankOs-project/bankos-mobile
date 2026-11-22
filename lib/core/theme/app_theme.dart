@@ -88,11 +88,9 @@ class AppTheme {
       return Color.alphaBlend(bankAccent.withValues(alpha: tint), neutral);
     }
 
-    final scaffoldBackgroundColor = surface(
-      AppTheme.scaffoldBackgroundColor,
-      const Color(0xFFF5F8FC),
-      0.035,
-    );
+    final scaffoldBackgroundColor = dark
+        ? AppTheme.scaffoldBackgroundColor
+        : const Color(0xFFF5F8FC);
     final cardColor = surface(AppTheme.cardColor, Colors.white, 0.025);
     final surfaceVariantColor = surface(
       AppTheme.surfaceVariantColor,
@@ -234,13 +232,6 @@ class AppTheme {
           fontWeight: FontWeight.w600,
         ),
         checkmarkColor: primaryColor,
-      ),
-      bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: cardColor,
-        selectedItemColor: primaryColor,
-        unselectedItemColor: textSecondaryColor,
-        type: BottomNavigationBarType.fixed,
-        elevation: 0,
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: cardColor,

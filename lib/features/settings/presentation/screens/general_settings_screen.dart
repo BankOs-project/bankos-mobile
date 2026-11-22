@@ -47,7 +47,7 @@ class GeneralSettingsScreen extends ConsumerWidget {
                   spacing: 12,
                   children: [
                     Text(
-                      'Apariencia',
+                      'Tema',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     SegmentedButton<ThemeMode>(
@@ -68,6 +68,13 @@ class GeneralSettingsScreen extends ConsumerWidget {
                           ? null
                           : (selected) =>
                                 _select(context, ref, selected.single),
+                    ),
+                    const Divider(),
+                    const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.language_rounded),
+                      title: Text('Idioma'),
+                      trailing: Text('Español'),
                     ),
                   ],
                 ),

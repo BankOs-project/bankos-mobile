@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/bank_surface_card.dart';
+import '../../../../core/theme/bank_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/models/session_account.dart';
 import '../widgets/session_accounts_content.dart';
@@ -55,13 +57,16 @@ class _AccountCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final statusColor = switch (account.status) {
-      AccountStatus.active => colors.primary,
-      AccountStatus.inactive => colors.onSurfaceVariant,
-      AccountStatus.blocked => colors.error,
-    };
+    final brand = theme.extension<BankSurfaceColors>();
+    final statusColor =
+        brand?.onFill ??
+        switch (account.status) {
+          AccountStatus.active => colors.primary,
+          AccountStatus.inactive => colors.onSurfaceVariant,
+          AccountStatus.blocked => colors.error,
+        };
 
-    return Card(
+    return BankSurfaceCard(
       child: ListTile(
         onTap: () => context.push(
           '/accounts/${Uri.encodeComponent(account.accountNumber)}',
@@ -69,13 +74,15 @@ class _AccountCard extends StatelessWidget {
         trailing: const Icon(Icons.chevron_right_rounded),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
-          backgroundColor: colors.primary.withValues(alpha: 0.14),
-          foregroundColor: colors.primary,
+          backgroundColor: (brand?.onFill ?? colors.primary).withValues(
+            alpha: 0.12,
+          ),
+          foregroundColor: brand?.onFill ?? colors.primary,
           child: const Icon(Icons.account_balance_wallet_outlined),
         ),
         title: Text(
           formatAccountBalance(account.balanceUnits, account.currency),
-          style: theme.textTheme.titleMedium,
+          style: theme.textTheme.titleMedium?.copyWith(color: brand?.onFill),
         ),
         subtitle: Wrap(
           spacing: 10,

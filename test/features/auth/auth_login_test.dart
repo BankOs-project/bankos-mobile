@@ -6,7 +6,9 @@ import 'dart:ui' as ui;
 import 'package:bankos_mobile/core/network/dio_provider.dart';
 import 'package:bankos_mobile/core/router/app_router.dart';
 import 'package:bankos_mobile/core/theme/app_theme.dart';
+import 'package:bankos_mobile/core/theme/bank_surface_card.dart';
 import 'package:bankos_mobile/core/theme/bank_theme.dart';
+import 'package:bankos_mobile/features/accounts/presentation/screens/main_shell_screen.dart';
 import 'package:bankos_mobile/features/accounts/presentation/providers/session_accounts_provider.dart';
 import 'package:bankos_mobile/features/accounts/presentation/providers/dashboard_finances_provider.dart';
 import 'package:bankos_mobile/features/auth/data/repositories/auth_repository.dart';
@@ -579,6 +581,20 @@ void main() {
       await _openDashboardMenu(tester);
       await _tapText(tester, 'Configuración general');
       final settings = find.byType(GeneralSettingsScreen);
+      final preferenceCard = find.widgetWithText(Card, 'Tema');
+      expect(
+        find.descendant(of: preferenceCard, matching: find.text('Idioma')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: preferenceCard, matching: find.text('Español')),
+        findsOneWidget,
+      );
+      expect(
+        tester.getTopLeft(find.text('Tema')).dy,
+        lessThan(tester.getTopLeft(find.text('Idioma')).dy),
+      );
+      expect(themeAt(settings).extension<BankSurfaceColors>(), isNull);
       expect(themeAt(settings).brightness, Brightness.dark);
       await _tapText(tester, 'Claro');
       expect(themeAt(settings).brightness, Brightness.light);
@@ -1271,7 +1287,7 @@ void main() {
 
       await login(_andinoBank, 'juan@banco-andino.com');
       Color activeAccent() =>
-          Theme.of(tester.element(find.byType(BottomNavigationBar)))
+          Theme.of(tester.element(find.byType(BankNavigationBar)))
               .colorScheme
               .primary;
       expect(activeAccent(), BankPalette.andino.darkAccent);
@@ -1286,7 +1302,21 @@ void main() {
       expect((await store.read())?.bankLogoUrl.toString(), andinoLogo);
       expect(find.text(r'$1.500,25 COP'), findsOneWidget);
       expect(find.text('Finanzas'), findsOneWidget);
-      expect(find.text('Saldo actual'), findsOneWidget);
+      for (final title in ['Saldo actual', 'Ingresos', 'Gastos']) {
+        final card = find.ancestor(
+          of: find.text(title),
+          matching: find.byType(BankSurfaceCard),
+        );
+        expect(card, findsOneWidget);
+        expect(
+          tester
+              .widget<Card>(
+                find.descendant(of: card, matching: find.byType(Card)),
+              )
+              .color,
+          BankPalette.andino.brandColor,
+        );
+      }
 
       await _openDashboardMenu(tester);
       await _tapText(tester, 'Configuración general');

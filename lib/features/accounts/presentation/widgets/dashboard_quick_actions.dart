@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
-import '../providers/bottom_nav_provider.dart';
 
 /// Barra de accesos directos rápidos para operaciones frecuentes en BankOs.
-class DashboardQuickActions extends ConsumerWidget {
+class DashboardQuickActions extends StatelessWidget {
   const DashboardQuickActions({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -39,7 +37,6 @@ class DashboardQuickActions extends ConsumerWidget {
               label: 'Cuentas',
               color: colors.secondary,
               onTap: () {
-                ref.read(bottomNavIndexProvider.notifier).state = 1;
                 context.go('/accounts');
               },
             ),
@@ -56,7 +53,6 @@ class DashboardQuickActions extends ConsumerWidget {
               label: 'Movimientos',
               color: colors.onSurfaceVariant,
               onTap: () {
-                ref.read(bottomNavIndexProvider.notifier).state = 3;
                 context.go('/history');
               },
             ),

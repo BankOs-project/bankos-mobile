@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../accounts/domain/models/session_account.dart';
-import '../../../accounts/presentation/providers/bottom_nav_provider.dart';
 import '../../../accounts/presentation/widgets/session_accounts_content.dart';
 import '../../../auth/domain/models/public_bank.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -159,7 +158,6 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
             } else if (_type == FinancialOperationType.transfer) {
               context.go('/transactions/transfer');
             } else {
-              ref.read(bottomNavIndexProvider.notifier).state = 2;
               context.go('/operations');
             }
           },
