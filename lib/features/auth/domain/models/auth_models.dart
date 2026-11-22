@@ -60,6 +60,19 @@ class AuthSession {
 
   bool get isExpired => !expiresAt.isAfter(DateTime.now());
 
+  AuthSession withEmail(String value) => AuthSession(
+    accessToken: accessToken,
+    tokenType: tokenType,
+    expiresAt: expiresAt,
+    userId: userId,
+    tenantId: tenantId,
+    role: role,
+    bankLabel: bankLabel,
+    bankLogoUrl: bankLogoUrl,
+    bankId: bankId,
+    email: value,
+  );
+
   factory AuthSession.fromJson(
     Map<String, dynamic> json, {
     required String bankLabel,

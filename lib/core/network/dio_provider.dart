@@ -71,8 +71,14 @@ final dioProvider = Provider<Dio>((ref) {
       onError: (error, handler) {
         final token = ref.read(authTokenProvider);
         final request = error.requestOptions;
+        final body = error.response?.data;
+        final incorrectProfilePassword =
+            request.path == '/auth/me/email-change' &&
+            body is Map &&
+            body['internal_code'] == 'AUTHENTICATION_FAILED';
         if (error.response?.statusCode == 401 &&
             request.path != '/auth/login' &&
+            !incorrectProfilePassword &&
             token != null &&
             request.headers['Authorization'] == 'Bearer $token') {
           ref.read(authTokenProvider.notifier).clear();

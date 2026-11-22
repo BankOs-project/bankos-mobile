@@ -104,10 +104,18 @@ class AuthNotifier extends Notifier<AuthState> {
       }
 
       _scheduleExpiration(session);
-      final name = await ref
+      final identity = await ref
           .read(authRepositoryProvider)
-          .fetchCustomerName(session);
-      if (_isCurrent(operation)) _activate(session, customerName: name);
+          .fetchCustomerIdentity(session);
+      if (!_isCurrent(operation)) return;
+      final email = identity.email;
+      final restored = email == null || email == session.email
+          ? session
+          : session.withEmail(email);
+      if (_activate(restored, customerName: identity.name) &&
+          !identical(session, restored)) {
+        await _persistUpdatedSession(restored);
+      }
     } on FormatException {
       if (_isCurrent(operation)) await logout();
     } on AuthException catch (error) {
@@ -173,6 +181,30 @@ class AuthNotifier extends Notifier<AuthState> {
         session: state.session,
         customerName: state.customerName,
       );
+    }
+  }
+
+  Future<bool> updateProfileIdentity(
+    AuthSession session, {
+    required String name,
+    String? email,
+  }) async {
+    if (!identical(state.session, session)) return false;
+    final updated = email == null || email == session.email
+        ? session
+        : session.withEmail(email);
+    state = AuthState(session: updated, customerName: name);
+    return identical(updated, session) || await _persistUpdatedSession(updated);
+  }
+
+  Future<bool> _persistUpdatedSession(AuthSession session) async {
+    final store = ref.read(sessionStoreProvider);
+    if (store == null) return true;
+    try {
+      await _updateStorage(() => store.save(session));
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

@@ -579,7 +579,7 @@ void main() {
         themeAt(menu).colorScheme.primary,
         AppTheme.darkTheme.colorScheme.primary,
       );
-      for (final option in ['Perfil', 'Documentos y certificados', 'Ayuda']) {
+      for (final option in ['Documentos y certificados', 'Ayuda']) {
         await _tapText(tester, option);
         final toast = find.byType(SnackBar);
         expect(find.text('Funcionalidad aún no disponible'), findsOneWidget);

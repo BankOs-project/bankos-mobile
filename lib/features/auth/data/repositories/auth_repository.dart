@@ -72,7 +72,9 @@ class AuthRepository {
     ];
   }
 
-  Future<String> fetchCustomerName(AuthSession session) async {
+  Future<({String name, String? email})> fetchCustomerIdentity(
+    AuthSession session,
+  ) async {
     final Response<Map<String, dynamic>> response;
     try {
       response = await _dio.get<Map<String, dynamic>>(
@@ -99,10 +101,17 @@ class AuthRepository {
     }
 
     final name = profile['full_name'];
-    return name is String && name.trim().isNotEmpty
-        ? name.trim()
-        : session.email;
+    final email = profile['email'];
+    return (
+      name: name is String && name.trim().isNotEmpty
+          ? name.trim()
+          : session.email,
+      email: email is String && email.isNotEmpty ? email : null,
+    );
   }
+
+  Future<String> fetchCustomerName(AuthSession session) async =>
+      (await fetchCustomerIdentity(session)).name;
 
   static const _rejectedSession = AuthException(
     message: 'La sesión dejó de ser válida. Inicia sesión de nuevo.',
