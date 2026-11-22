@@ -22,7 +22,7 @@ class DashboardQuickActions extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _QuickActionItem(
               key: const Key('quick_action_transfer'),
@@ -36,9 +36,7 @@ class DashboardQuickActions extends StatelessWidget {
               icon: Icons.account_balance_rounded,
               label: 'Cuentas',
               color: colors.secondary,
-              onTap: () {
-                context.go('/accounts');
-              },
+              onTap: () => context.go('/accounts'),
             ),
             _QuickActionItem(
               key: const Key('quick_action_deposit'),
@@ -52,9 +50,7 @@ class DashboardQuickActions extends StatelessWidget {
               icon: Icons.history_rounded,
               label: 'Movimientos',
               color: colors.onSurfaceVariant,
-              onTap: () {
-                context.go('/history');
-              },
+              onTap: () => context.go('/history'),
             ),
           ],
         ),
@@ -89,7 +85,7 @@ class _QuickActionItem extends StatelessWidget {
             onTap: onTap,
             borderRadius: BorderRadius.circular(AppTheme.radiusCard),
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12.0),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 2),
               decoration: BoxDecoration(
                 color: colors.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(AppTheme.radiusCard),
@@ -113,11 +109,12 @@ class _QuickActionItem extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     label,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],

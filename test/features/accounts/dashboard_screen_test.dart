@@ -101,6 +101,7 @@ void main() {
       expect(find.text('Aún no tienes cuentas en este banco.'), findsOneWidget);
 
       await show(const DashboardScreen());
+      expect(find.text('Todavía no tienes cuentas.'), findsOneWidget);
       expect(find.text('Aún no tienes cuentas en este banco.'), findsOneWidget);
       expect(find.text('Finanzas'), findsOneWidget);
       expect(find.text('Saldo actual'), findsOneWidget);

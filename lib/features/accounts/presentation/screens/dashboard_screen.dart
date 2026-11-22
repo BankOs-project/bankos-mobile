@@ -7,6 +7,7 @@ import '../../../../core/theme/bank_surface_card.dart';
 import '../../../../core/theme/bank_theme.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/bank_logo.dart';
+import '../widgets/dashboard_accounts_carousel.dart';
 import '../widgets/dashboard_finances_section.dart';
 import '../widgets/dashboard_quick_actions.dart';
 
@@ -23,10 +24,14 @@ class DashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        centerTitle: false,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            BankLogo(logoUrl: session?.bankLogoUrl),
+            BankLogo(
+              bankName: session?.bankLabel,
+              logoUrl: session?.bankLogoUrl,
+            ),
             const SizedBox(width: 8),
             Flexible(
               child: Text(
@@ -56,42 +61,46 @@ class DashboardScreen extends ConsumerWidget {
             onPressed: () => context.push('/menu'),
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(
+            MediaQuery.textScalerOf(context).scale(24) * 2 + 16,
+          ),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Text(
+                '¡Hola, ${customerName ?? session?.email ?? 'cliente'}!',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: brand?.onFill ?? theme.colorScheme.onSurface,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 24,
             children: [
-              BankSurfaceCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor:
-                            (brand?.onFill ?? theme.colorScheme.primary)
-                                .withValues(alpha: 0.12),
-                        foregroundColor:
-                            brand?.onFill ?? theme.colorScheme.primary,
-                        child: const Icon(Icons.person_outline_rounded),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '¡Hola, ${customerName ?? session?.email ?? 'cliente'}!',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            color: brand?.onFill,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+              const BankSurfaceCard(
+                child: ListTile(
+                  leading: Icon(Icons.key_rounded),
+                  title: Text('Crea tu llave Bre-B'),
+                  subtitle: Text('Próximamente'),
                 ),
               ),
-              const SizedBox(height: 20),
+              if (session != null)
+                DashboardAccountsCarousel(
+                  key: ObjectKey(session),
+                  session: session,
+                ),
               const DashboardQuickActions(),
-              const SizedBox(height: 24),
               if (session != null) DashboardFinancesSection(session: session),
             ],
           ),

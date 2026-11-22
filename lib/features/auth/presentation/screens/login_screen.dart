@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../domain/models/public_bank.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/bank_logo.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, required this.bank});
@@ -103,8 +104,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const _BrandHeader(logoAssetPath: _logoAssetPath),
-                        const SizedBox(height: 28),
+                        _BrandHeader(
+                          logoAssetPath: _logoAssetPath,
+                          bank: widget.bank,
+                        ),
+                        const SizedBox(height: 20),
                         _LoginCard(
                           formKey: _formKey,
                           bankName: widget.bank.name,
@@ -199,78 +203,51 @@ class _AmbientBackground extends StatelessWidget {
 }
 
 class _BrandHeader extends StatelessWidget {
-  const _BrandHeader({required this.logoAssetPath});
+  const _BrandHeader({required this.logoAssetPath, required this.bank});
 
   final String logoAssetPath;
+  final PublicBank bank;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final badgeColor = colors.brightness == Brightness.dark
-        ? AppTheme.mintGlowColor
-        : colors.primary;
-    return Column(
-      children: [
-        Container(
-          width: 148,
-          height: 148,
-          decoration: BoxDecoration(
-            color: AppTheme.scaffoldBackgroundColor,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: colors.primary.withValues(alpha: 0.30),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: colors.primary.withValues(alpha: 0.18),
-                blurRadius: 28,
-                spreadRadius: 1,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(27),
-            child: Transform.scale(
-              scale: 1.32,
-              child: Image.asset(
-                logoAssetPath,
-                fit: BoxFit.cover,
-                semanticLabel: 'Logo de BankOs Billetera Digital',
+    return Center(
+      child: Row(
+        key: const Key('login_brand_logos'),
+        mainAxisSize: MainAxisSize.min,
+        spacing: 12,
+        children: [
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              color: AppTheme.scaffoldBackgroundColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: colors.primary.withValues(alpha: 0.30),
+                width: 1.2,
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 18),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: colors.primary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-            border: Border.all(color: colors.primary.withValues(alpha: 0.32)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.verified_user_outlined, size: 14, color: badgeColor),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  'Banca digital multitenant',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: badgeColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.2,
-                  ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(19),
+              child: Transform.scale(
+                scale: 1.32,
+                child: Image.asset(
+                  logoAssetPath,
+                  fit: BoxFit.cover,
+                  semanticLabel: 'Logo de BankOs Billetera Digital',
                 ),
               ),
-            ],
+            ),
           ),
-        ),
-      ],
+          BankLogo(
+            bankName: bank.name,
+            logoUrl: bank.logoUrl,
+            size: 62,
+            semanticLabel: 'Logo de ${bank.name}',
+          ),
+        ],
+      ),
     );
   }
 }
